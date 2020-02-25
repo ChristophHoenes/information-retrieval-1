@@ -5,3 +5,8 @@ assignment1/.ipynb_checkpoints*
 
 assignment2/venv*
 assignment2/datasets*
+assignment2/.idea*
+assignment2/__pycache__
+assignment2/processed_docs*
+assignment2/tf-idf.json
+assignment2/tfidf_index
