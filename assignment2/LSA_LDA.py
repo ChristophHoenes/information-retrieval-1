@@ -1,92 +1,170 @@
-from collections import defaultdict
-
 import read_ap
 import download_ap
+from utils import bow2tfidf, kl_divergence
 
 import numpy as np
-from scipy.sparse import csc_matrix
-import math
+import os
+import json
+import pickle as pkl
 
-from tf_idf import TfIdfRetrieval
-from gensim.test.utils import get_tmpfile
 from gensim.models import LsiModel, LdaModel
 from gensim import similarities
 
 from gensim.corpora import Dictionary
 import logging
 
+class LSI():
+    def __init__(self, docs, num_topics=500, chunksize=2000, no_below=50, no_above=0.5,
+                 tfidf=True, model_path="./lsi_data"):
+        # Set training parameters.
+        self.num_topics = num_topics
+        self.chunksize = chunksize
+        self.passes = passes
+        self.iterations = iterations
+        self.eval_every = eval_every
+        self.no_below = no_below
+        self.no_above = no_above
+        self.tfidf = tfidf
+        self.model_path = model_path
 
-def filter_extremes(index, num_docs, no_below=50, no_above=0.65):
-    deleted_below = 0
-    deleted_above = 0
-    print("Initial vocabulary size: {}".format(len(index)))
-    for k in list(index):
-        if len(index[k]) < no_below:
-            del index[k]
-            deleted_below += 1
-        if len(index[k]) > no_above*num_docs:
-            del index[k]
-            deleted_above += 1
-    print("Deleted {} tokens below threshold and {} above threshold. New vocabulary size: {}".format(deleted_below,
-                                                                                                     deleted_above,
-                                                                                                     len(index)))
+        if not os.path.exists(model_path):
+            os.makedirs(model_path)
+        index_path = os.path.join(model_path, 'lsi_index_train.index')
+        if os.path.exists(index_path):
+            with open(index_path, "rb") as reader:
+                index = pkl.load(reader)
+                self.index = index["index"]
+                self.index2docid = index["index2docid"]
+        else:
+            self.rebuild_index(docs, index_path)
 
-def bow_matrix(index, num_docs, binarize=False):
-    vocabulary = list(index.df.keys())
-    #matrix = np.zeros((len(vocabulary), num_docs))
-    row = []
-    col = []
-    data = []
-    for w, word in enumerate(vocabulary):
-        for d, (doc_id, tf) in enumerate(index.ii[word]):
-            row.append(w)
-            col.append(d)
-            #matrix[word, doc_id] = 1.0
-            data.append(tf)
-    if binarize:
-        data = np.ones_like(row)
-    else:
-        data = np.array(data)
-    return csc_matrix((data, (np.array(row), np.array(col))), shape=(len(vocabulary), num_docs))
+    def train(self):
+        print("Start LSI training: ")
+        temp = self.index[0]
+        id2word = self.index.id2token
+        lsi_model = LsiModel(
+            corpus=self.corpus_tfidf if self.tfidf else self.corpus_bow,
+            id2word=id2word,
+            chunksize=chunksize,
+            num_topics=num_topics
+        )
+        print("done.")
+        return lsi_model
 
-def tf_idf_matrix(index, num_docs):
-    vocabulary = list(index.df.keys())
-    row = []
-    col = []
-    data = []
-    for w, word in enumerate(vocabulary):
-        for d, (doc_id, tf) in enumerate(index.ii[word]):
-            tf_idf = np.log(1 + tf) / index.df[word]
-            if tf_idf != 0:
-                row.append(w)
-                col.append(d)
-                data.append(tf_idf)
-    return csc_matrix((np.array(data), (np.array(row), np.array(col))), shape=(len(vocabulary), num_docs))
+    def save(self, path="./lsi.model"):
+        print("saving LSI model...")
+        self.model.save(path)
+        print("done.")
 
-def cosine_similarity(a,b):
-    dot = np.dot(a, b)
-    norma = np.linalg.norm(a)
-    normb = np.linalg.norm(b)
-    cos = dot / (norma * normb)
-    return cos
+    def rebuild_index(self, docs, index_path, retrain=True):
+        self.index2docid = {i: id for i, docid in enumerate(docs)}
+        docs2 = [docs[id] for id in docs]
+        self.index = Dictionary(docs2)
+        self.index.filter_extremes(no_below=self.no_below, no_above=self.no_above)
+        with open(index_path, "wb") as writer:
+            index = {
+                "index": self.index,
+                "index2docid": self.index2docid
+            }
+            pkl.dump(self.index, writer)
+        self.corpus_bow = [d.doc2bow(doc) for doc in docs2]
+        self.corpus_tfidf = [bow2tfidf(bow_vec, d) for bow_vec in self.corpus_bow]
+        if retrain:
+            self.model = self.train()
 
-def bow2tfidf(bow_vec, d):
-    result = []
-    bow_vec = [(id, np.log(1 + tf)) for (id, tf) in bow_vec]
-    for (id, tf) in bow_vec:
-        result.append((id, tf / d.dfs[id]))
-    return result
+    def rank(self, query, first_query=True):
+        query_repr = read_ap.process_text(query)
+        vec_bow = self.index.doc2bow(query_repr)
+        if self.tfidf:
+            vec_bow = bow2tfidf(vec_bow, self.index)
+        vec_lsi = self.model[vec_bow]  # convert the query to LSI space
 
-def rank(model, query, d, score='BoW'):
+        index_path = os.path.join(self.model_path, 'lsi_index_rank.index')
+        if first_query:
+            index = similarities.Similarity(self.model[self.corpus_tfidf if self.tfidf else self.corpus_bow])  # transform corpus to LSI space and index it
+            index.save(index_path)
+        else:
+            index = similarities.Similarity.load(index_path)
+        sims = index[vec_lsi]  # query similarity
+        sims = sorted(enumerate(sims), key=lambda item: -item[1])
+        return sims
+
+class LDA():
+    def __init__(self, docs, num_topics=500, chunksize=2000, passes=1, iterations=1000, eval_every=None, no_below=50,
+                 no_above=0.5, tfidf=True, model_path="./lda_data"):
+        # Set training parameters.
+        self.num_topics = num_topics
+        self.chunksize = chunksize
+        self.passes = passes
+        self.iterations = iterations
+        self.eval_every = eval_every
+        self.no_below = no_below
+        self.no_above = no_above
+        self.tfidf = tfidf
+
+        if not os.path.exists(model_path):
+            os.makedirs(model_path)
+        index_path = os.path.join(model_path, 'lda_index_train.index')
+        if os.path.exists(index_path):
+            with open(index_path, "rb") as reader:
+                index = pkl.load(reader)
+                self.index = index["index"]
+                self.index2docid = index["index2docid"]
+        else:
+            self.rebuild_index(docs, index_path)
+
+    def train(self):
+        print("Start LDA training: ")
+        temp = self.index[0]
+        id2word = self.index.id2token
+        lda_model = LdaModel(
+            corpus=self.corpus_tfidf if self.tfidf else self.corpus_bow,
+            id2word=id2word,
+            chunksize=chunksize,
+            alpha='auto',
+            eta='auto',
+            iterations=iterations,
+            num_topics=num_topics,
+            passes=passes,
+            eval_every=eval_every
+        )
+        print("done.")
+        return  lda_model
+
+    def save(self, path="./lda.model" ):
+        print("saving LDA model...")
+        self.model.save(path)
+        print("done.")
+
+    def rebuild_index(self, docs, index_path, retrain=True):
+        self.index2docid = {i: id for i, docid in enumerate(docs)}
+        docs2 = [docs[id] for id in docs]
+        self.index = Dictionary(docs2)
+        self.index.filter_extremes(no_below=self.no_below, no_above=self.no_above)
+        with open(index_path, "wb") as writer:
+            index = {
+                "index": self.index,
+                "index2docid": self.index2docid
+            }
+            pkl.dump(self.index, writer)
+        self.corpus_bow = [d.doc2bow(doc) for doc in docs2]
+        self.corpus_tfidf = [bow2tfidf(bow_vec, d) for bow_vec in self.corpus_bow]
+        if retrain:
+            self.model = self.train()
+
+
+def rank(model, query, d, tfidf_matrix=False, lda=False):
     query_repr = read_ap.process_text(query)
     vec_bow = d.doc2bow(query_repr)
-    if score == 'tfidf':
+    if tfidf_matrix:
         vec_bow = bow2tfidf(vec_bow, d)
     vec_lsi = model[vec_bow]  # convert the query to LSI space
     print(vec_lsi)
+    if lda:
+        sims = [(index2docid[i], kl_divergence(doc, vec_lsi)) for i, doc in enumerate(index)]
     index = similarities.Similarity(model[corpus])  # transform corpus to LSI space and index it
     index.save('/tmp/deerwester.index')
-    index = similarities.MatrixSimilarity.load('/tmp/deerwester.index')
+    index = similarities.Similarity.load('/tmp/deerwester.index')
     sims = index[vec_lsi]  # perform a similarity query against the corpus
     print(list(enumerate(sims)))  # print (document_number, document_similarity) 2-tuples
     sims = sorted(enumerate(sims), key=lambda item: -item[1])
@@ -94,16 +172,6 @@ def rank(model, query, d, score='BoW'):
     #   print(s, documents[i])
     return sims
 
-def rank2(model, query):
-    query_repr = read_ap.process_text(query)
-    q_k = np.linalg.inv(model.projection.s) @ model.projection.u.T @ query_repr
-    #scores = np.zeros(len(model.projection.s[:,0]))
-    scores = defaultdict(float)
-    for doc_id in range(len(scores)):
-        scores[doc_id] = cosine_similarity(model.projection.s[:, doc_id], q_k)
-    scores = list(scores.items())
-    scores.sort(key=lambda _: _[1])
-    return scores
 
 if __name__ == "__main__":
     logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
@@ -116,22 +184,24 @@ if __name__ == "__main__":
     # Set training parameters.
     num_topics = 50 #500
     chunksize = 2000
-    passes = 20
+    passes = 2
     iterations = 400
-    eval_every = None  # Don't evaluate model perplexity, takes too much time.
+    eval_every = 1  # Don't evaluate model perplexity, takes too much time.
 
+    index2docid = {i:id for i, id in enumerate(docs_by_id)}
     docs = [docs_by_id[id] for id in docs_by_id]
     d = Dictionary(docs)
     d.filter_extremes(no_below=50, no_above=0.5)
     corpus = [d.doc2bow(doc) for doc in docs]
     corpus_tfidf = [bow2tfidf(bow_vec, d) for bow_vec in corpus]
-
+    """
     lsi_bow = LsiModel(corpus, id2word=d, num_topics=num_topics)
     lsi_bow.save("./bow_lsi_01.model")  # save model
     print(lsi_bow.print_topics(5, 10))
     lsi_tfidf = LsiModel(corpus_tfidf, id2word=d, num_topics=num_topics)
     lsi_tfidf.save("./lsi_tfidf_01.model")  # save model
     print(lsi_tfidf.print_topics(5, 10))
+    """
     print("Start LDA")
     lda_model = LdaModel(
         corpus=corpus_tfidf,
@@ -147,6 +217,14 @@ if __name__ == "__main__":
     print("save LDA")
     lda_model.save("./lda.model")  # save model
     lda_model.print_topics(5, 10)
+    query_repr = read_ap.process_text('costly response technology')
+    vec_bow = d.doc2bow(query_repr)
+    vec_bow = bow2tfidf(vec_bow, d)
+    vec_lsi = lda_model[vec_bow]  # convert the query to LSI space
+    print(vec_lsi)
+    corp_lda = vec_lsi = lda_model[corpus_tfidf]
+    print(len(corp_lda))
+    print(len(corp_lda[0]))
     """
     #dictionary = Dictionary(docs_by_id)
     #dictionary.filter_extremes(no_below=50, no_above=0.5)
