@@ -9,59 +9,71 @@ import random
 import download_ap
 import numpy as np
 
+
+
 class W2v:
-    def __init__(self, docs):
-        self.doc_ids = docs.keys()
-        self.docs = docs
-        index_path = "./tfidf_index"
-        if os.path.exists(index_path):
-
-            with open(index_path, "rb") as reader:
-                index = pkl.load(reader)
-
-            self.ii = index["ii"]
-            self.df = index["df"]
-            print('done2')
+    def __init__(self, wind_size, docs=None):
+        if docs == None:
+            self.load_embedding(wind_size)
         else:
-            self.ii = defaultdict(list)
-            self.df = defaultdict(int)
+            self.doc_ids = docs.keys()
+            self.docs = docs
+            index_path = "./tfidf_index"
+            if os.path.exists(index_path):
 
-            doc_ids = list(docs.keys())
+                with open(index_path, "rb") as reader:
+                    index = pkl.load(reader)
 
-            print("Building Index")
-            # build an inverted index
-            for doc_id in tqdm(doc_ids):
-                doc = docs[doc_id]
+                self.ii = index["ii"]
+                self.df = index["df"]
+                print('done2')
+            else:
+                self.ii = defaultdict(list)
+                self.df = defaultdict(int)
 
-                counts = Counter(doc)
-                for t, c in counts.items():
-                    self.ii[t].append((doc_id, c))
-                # count df only once - use the keys
-                for t in counts:
-                    self.df[t] += 1
+                doc_ids = list(docs.keys())
 
-            with open(index_path, "wb") as writer:
-                index = {
-                    "ii": self.ii,
-                    "df": self.df
-                }
-                pkl.dump(index, writer)
+                print("Building Index")
+                # build an inverted index
+                for doc_id in tqdm(doc_ids):
+                    doc = docs[doc_id]
 
-        accepted_words = set()
-        for token in self.ii:
-            occurrences = [c[1] for c in self.ii[token]]
-            occurrences = sum(occurrences)
-            if occurrences>50:
-                accepted_words.add(token)
+                    counts = Counter(doc)
+                    for t, c in counts.items():
+                        self.ii[t].append((doc_id, c))
+                    # count df only once - use the keys
+                    for t in counts:
+                        self.df[t] += 1
 
-        # start index from 1 and reserve 0 for unknown words
-        self.word2idx = {w: idx+1 for (idx, w) in enumerate(accepted_words)}
-        self.idx2word = {idx+1: w for (idx, w) in enumerate(accepted_words)}
-        self.word2idx['<unk>'] = 0
-        self.idx2word[0] = '<unk>'
-        self.vocab = self.word2idx.keys()
+                with open(index_path, "wb") as writer:
+                    index = {
+                        "ii": self.ii,
+                        "df": self.df
+                    }
+                    pkl.dump(index, writer)
 
+            accepted_words = set()
+            for token in self.ii:
+                occurrences = [c[1] for c in self.ii[token]]
+                occurrences = sum(occurrences)
+                if occurrences>50:
+                    accepted_words.add(token)
 
+            # start index from 1 and reserve 0 for unknown words
+            self.word2idx = {w: idx+1 for (idx, w) in enumerate(accepted_words)}
+            self.idx2word = {idx+1: w for (idx, w) in enumerate(accepted_words)}
+            self.word2idx['<unk>'] = 0
+            self.idx2word[0] = '<unk>'
+            self.vocab = self.word2idx.keys()
+            self.embedding = None
+
+    def load_embedding(self, wind_size):
+        weights = torch.tensor(np.load('./w2v_weights_'+str(wind_size)+'.npy'))
+        self.embedding = nn.Embedding.from_pretrained(weights)
+        with open('./word2idx_'+str(wind_size)+'.pickle', 'rb') as pickle_file:
+            self.word2idx = pkl.load(pickle_file)
+        with open('./idx2word_'+str(wind_size)+'.pickle', 'rb') as pickle_file:
+            self.idx2word = pkl.load(pickle_file)
 
 
     def get_pairs(self, num, wind_size):
@@ -113,47 +125,66 @@ class W2v:
 
 
     def train_nn(self, embedding_dim, wind_size):
-        iterations = 10000
+        iterations = 100000
 
-        l1 = nn.Linear(len(self.vocab), embedding_dim, bias=False)
-        l2 = nn.Linear(len(self.vocab), embedding_dim, bias=False)
+        l1 = nn.Embedding(len(self.vocab), embedding_dim, sparse=True)
+        l2 = nn.Embedding(len(self.vocab), embedding_dim, sparse=True)
         params = list(l1.parameters()) + list(l2.parameters())
         lr = 0.001
         batch_size = 1000
-        optimizer = torch.optim.Adam(params, lr=lr)
+        optimizer = torch.optim.SparseAdam(params, lr=lr)
         criterion = nn.BCELoss()
 
         for i in range(iterations):
             optimizer.zero_grad()
             pairs = self.get_pairs(batch_size, wind_size)
-            center = pairs[:, 0]
-            context = pairs[:, 1]
+            center = torch.tensor(pairs[:, 0]).long()
+            context = torch.tensor(pairs[:, 1]).long()
             labels = torch.tensor(pairs[:, 2]).float()
 
-            input_center = torch.zeros(batch_size, len(self.vocab))
-            input_context = torch.zeros(batch_size, len(self.vocab))
+            #input_center = torch.zeros(batch_size, len(self.vocab))
+            #input_context = torch.zeros(batch_size, len(self.vocab))
+            """
             for j in range(len(center)):
                 input_center[j, center[j]] = 1.0
                 input_context[j, context[j]] = 1.0
-
-            out1 = l1(input_center)
-            out2 = l2(input_context)
+            """
+            out1 = l1(center)
+            out2 = l2(context)
             shape = out1.shape
+            #print(shape)
             dot_prods = torch.bmm(out1.view(shape[0], 1, shape[1]), out2.view(shape[0], shape[1], 1))
             dot_prods = dot_prods.squeeze()
 
             logits = torch.sigmoid(dot_prods)
             loss = criterion(logits, labels)
-            print("Iteration {}: {}".format(i, loss))
+            #print("Iteration {}: {}".format(i, loss))
             loss.backward()
             optimizer.step()
 
-            if i%10 == 0:
-                print(loss)
+            if i%100 == 0:
+                print("Iteration {}: {}".format(i, loss))
         wvs = l1.weight.data.numpy()
-        np.save('./w2v_weights.npy', wvs)
+        np.save('./w2v_weights_'+str(wind_size)+'.npy', wvs)
+        with open('./word2idx_'+str(wind_size)+'.pickle', 'wb') as pickle_file:
+            pkl.dump(self.word2idx, pickle_file)
+        with open('./idx2word_'+str(wind_size)+'.pickle', 'wb') as pickle_file:
+            pkl.dump(self.idx2word, pickle_file)
+        self.embedding = l1
 
+    def most_similar(self, word, k):
+        word_vector = self.get_word_vec(word)
+        similarities = torch.zeros(len(self.idx2word))
+        cos = nn.CosineSimilarity(dim=0, eps=1e-6)
+        for i in self.idx2word:
+            similarities[i] = abs(cos(word_vector, self.get_word_vec(self.idx2word[i])))
+        #print(similarities.shape)
+        indices = (-similarities.numpy()).argsort()[:k]
+        results = [self.idx2word[idx] for idx in indices]
+        return results
 
+    def get_word_vec(self, word):
+        return self.embedding(torch.tensor(self.word2idx[word], dtype=torch.long))
 
 if __name__ == "__main__":
     # ensure dataset is downloaded
@@ -169,9 +200,16 @@ if __name__ == "__main__":
         with open(docs_path, "wb") as writer:
             pkl.dump(docs_by_id, writer)
     """
-    window_size = 2
+    window_size = 15
     embedding_dim = 100
-    docs_by_id = read_ap.get_processed_docs()
-    print('done')
-    w2v = W2v(docs_by_id)
-    w2v.train_nn(embedding_dim, window_size)
+    #docs_by_id = read_ap.get_processed_docs()
+    #print('done')
+    #w2v = W2v(window_size, docs_by_id)
+    #w2v.train_nn(embedding_dim, window_size)
+    w2v = W2v(window_size)
+    #embedding = load_embedding()
+    #print(weights.shape)
+    word = 'dog'
+    k = 10
+    similar = w2v.most_similar(word, k)
+    print(similar)
