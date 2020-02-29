@@ -29,18 +29,16 @@ class LSI():
         if not os.path.exists(model_path):
             os.makedirs(model_path)
         index_path = os.path.join(model_path, 'lsi_index_train.index')
-        corp_bow_path = os.path.join(model_path, 'corpus_bow')
-        corp_tfidf_path = os.path.join(model_path, 'corpus_tfidf')
         if os.path.exists(index_path):
-            assert os.path.exists(corp_bow_path) and os.path.exists(os.path.join(corp_tfidf_path)),\
+            assert os.path.exists("./corpus_bow") and os.path.exists(os.path.join("./corpus_tfidf")),\
                 "Corpus file missing! Please rebuild index."
             with open(index_path, "rb") as reader:
                 index = pkl.load(reader)
                 self.index = index["index"]
                 self.index2docid = index["index2docid"]
-            with open(corp_bow_path, "rb") as reader:
+            with open("./corpus_bow", "rb") as reader:
                 self.corpus_bow = pkl.load(reader)
-            with open(corp_tfidf_path, "rb") as reader:
+            with open("./corpus_tfidf", "rb") as reader:
                 self.corpus_tfidf = pkl.load(reader)
             self.model = self.train()
         else:
@@ -77,9 +75,9 @@ class LSI():
                 "index2docid": self.index2docid
             }
             pkl.dump(index, writer)
-        with open(os.path.join(self.model_path, "corpus_bow"), "wb") as writer:
+        with open("./corpus_bow", "wb") as writer:
             pkl.dump(self.corpus_bow, writer)
-        with open(os.path.join(self.model_path, "corpus_tfidf"), "wb") as writer:
+        with open("./corpus_tfidf", "wb") as writer:
             pkl.dump(self.corpus_tfidf, writer)
         if retrain:
             self.model = self.train()
@@ -100,7 +98,7 @@ class LSI():
             index = similarities.Similarity.load(index_path)
         sims = index[vec_lsi]  # query similarity
         sims = sorted(enumerate(sims), key=lambda item: -item[1])
-        sims = [(self.index2docid[idx], value) for (idx, value) in sims]
+        sims = [(self.index2docid[idx], np.float64(value)) for (idx, value) in sims]
         return sims
 
 class LDA():
@@ -120,18 +118,16 @@ class LDA():
         if not os.path.exists(model_path):
             os.makedirs(model_path)
         index_path = os.path.join(model_path, 'lda_index_train.index')
-        corp_bow_path = os.path.join(model_path, 'corpus_bow')
-        corp_tfidf_path = os.path.join(model_path, 'corpus_tfidf')
         if os.path.exists(index_path):
-            assert os.path.exists(corp_bow_path) and os.path.exists(os.path.join(corp_tfidf_path)), \
+            assert os.path.exists("./corpus_bow") and os.path.exists(os.path.join("./corpus_tfidf")), \
                 "Corpus file missing! Please rebuild index."
             with open(index_path, "rb") as reader:
                 index = pkl.load(reader)
                 self.index = index["index"]
                 self.index2docid = index["index2docid"]
-            with open(corp_bow_path, "rb") as reader:
+            with open("./corpus_bow", "rb") as reader:
                 self.corpus_bow = pkl.load(reader)
-            with open(corp_tfidf_path, "rb") as reader:
+            with open("./corpus_tfidf", "rb") as reader:
                 self.corpus_tfidf = pkl.load(reader)
             self.model = self.train()
         else:
@@ -173,9 +169,9 @@ class LDA():
                 "index2docid": self.index2docid
             }
             pkl.dump(index, writer)
-        with open(os.path.join(self.model_path, "corpus_bow"), "wb") as writer:
+        with open("./corpus_bow", "wb") as writer:
             pkl.dump(self.corpus_bow, writer)
-        with open(os.path.join(self.model_path, "corpus_tfidf"), "wb") as writer:
+        with open("./corpus_tfidf", "wb") as writer:
             pkl.dump(self.corpus_tfidf, writer)
         if retrain:
             self.model = self.train()
@@ -195,8 +191,10 @@ class LDA():
         else:
             with open(index_path, "rb") as reader:
                 index = pkl.load(reader)
-        sims = [(self.index2docid[i], kl_divergence(self.model[doc], vec_lda)) for i, doc in enumerate(self.index)]
-        sims = sorted(enumerate(sims), key=lambda item: item[1])
+        #sims = [(self.index2docid[i], kl_divergence(self.model[doc], vec_lda)) for i, doc in enumerate(index)]
+        sims = [kl_divergence(self.model[doc], vec_lda) for doc in index]
+        sims = sorted(enumerate(sims), key=lambda item: -item[1])
+        sims = [(self.index2docid[idx], np.float64(value)) for (idx, value) in sims]
         return sims
 
 
@@ -208,12 +206,12 @@ if __name__ == "__main__":
     # pre-process the text
     docs_by_id = read_ap.get_processed_docs()
 
-    lsi_bow = LSI(docs_by_id, num_topics=10, tfidf=False, model_path="./lsi_data_bow")
+    lsi_bow = LSI(docs_by_id, tfidf=False, model_path="./lsi_data_bow")
     lsi_bow.save()
-    lsi_tfidf = LSI(docs_by_id, num_topics=10, tfidf=True, model_path="./lsi_data_tfidf")
+    lsi_tfidf = LSI(docs_by_id, tfidf=True, model_path="./lsi_data_tfidf")
     lsi_tfidf.save()
 
-    lda_tfidf = LDA(docs_by_id, num_topics=10, tfidf=True, model_path="./lda_data_tfidf")
+    lda_tfidf = LDA(docs_by_id, tfidf=True, model_path="./lda_data_tfidf")
     lda_tfidf.save()
 
     # read in the qrels
@@ -236,8 +234,8 @@ if __name__ == "__main__":
         results_lsi_tfidf = lsi_tfidf.rank(query_text, first_query=first_query)
         overall_ser_lsi_tfidf[qid] = dict(results_lsi_tfidf)
 
-        #results_lda_tfidf = lda_tfidf.rank(query_text, first_query=first_query)
-        #overall_ser_lda_tfidf[qid] = dict(results_lda_tfidf)
+        results_lda_tfidf = lda_tfidf.rank(query_text, first_query=first_query)
+        overall_ser_lda_tfidf[qid] = dict(results_lda_tfidf)
         first_query = False
     # run evaluation with `qrels` as the ground truth relevance judgements
     # here, we are measuring MAP and NDCG, but this can be changed to
@@ -245,7 +243,9 @@ if __name__ == "__main__":
     evaluator = pytrec_eval.RelevanceEvaluator(qrels, {'map', 'ndcg'})
     metrics_lsi_bow = evaluator.evaluate(overall_ser_lsi_bow)
     metrics_lsi_tfidf = evaluator.evaluate(overall_ser_lsi_tfidf)
-    #metrics_lda_tfidf = evaluator.evaluate(overall_ser_lda_tfidf)
+    print('get metrics LDA...')
+    metrics_lda_tfidf = evaluator.evaluate(overall_ser_lda_tfidf)
+    print('done.')
 
 
     # dump this to JSON
@@ -257,6 +257,23 @@ if __name__ == "__main__":
     with open("lda_tfidf.json", "w") as writer:
         json.dump(metrics_lda_tfidf, writer, indent=1)
 
+    overall_rankings = [('overall_ser_lsi_bow', overall_ser_lsi_bow),
+                        ('overall_ser_lsi_tfidf', overall_ser_lsi_tfidf),
+                        ('overall_ser_lda_tfidf', overall_ser_lda_tfidf)]
+    # write file with all query-doc pairs, scores, ranks, etc.
+    for o_name, o in overall_rankings:
+        f = open(o_name + ".dat", "w")
+        for qid in o:
+            prevscore = 1e9
+            for rank, docid in enumerate(o[qid], 1):
+                score = o[qid][docid]
+                if score > prevscore:
+                    f.close()
+                    raise Exception("'results_dic' not ordered! Stopped writing results")
+                f.write(f"{qid} Q0 {docid} {rank} {score} STANDARD\n")
+                prevscore = score
+        f.close()
+    print('programm finished without error')
     """
     # Set training parameters.
     num_topics = 50 #500
