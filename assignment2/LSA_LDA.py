@@ -29,18 +29,16 @@ class LSI():
         if not os.path.exists(model_path):
             os.makedirs(model_path)
         index_path = os.path.join(model_path, 'lsi_index_train.index')
-        corp_bow_path = os.path.join(model_path, 'corpus_bow')
-        corp_tfidf_path = os.path.join(model_path, 'corpus_tfidf')
         if os.path.exists(index_path):
-            assert os.path.exists(corp_bow_path) and os.path.exists(os.path.join(corp_tfidf_path)),\
+            assert os.path.exists("./corpus_bow") and os.path.exists(os.path.join("./corpus_tfidf")),\
                 "Corpus file missing! Please rebuild index."
             with open(index_path, "rb") as reader:
                 index = pkl.load(reader)
                 self.index = index["index"]
                 self.index2docid = index["index2docid"]
-            with open(corp_bow_path, "rb") as reader:
+            with open("./corpus_bow", "rb") as reader:
                 self.corpus_bow = pkl.load(reader)
-            with open(corp_tfidf_path, "rb") as reader:
+            with open("./corpus_tfidf", "rb") as reader:
                 self.corpus_tfidf = pkl.load(reader)
             self.model = self.train()
         else:
@@ -77,9 +75,9 @@ class LSI():
                 "index2docid": self.index2docid
             }
             pkl.dump(index, writer)
-        with open(os.path.join(self.model_path, "corpus_bow"), "wb") as writer:
+        with open("./corpus_bow", "wb") as writer:
             pkl.dump(self.corpus_bow, writer)
-        with open(os.path.join(self.model_path, "corpus_tfidf"), "wb") as writer:
+        with open("./corpus_tfidf", "wb") as writer:
             pkl.dump(self.corpus_tfidf, writer)
         if retrain:
             self.model = self.train()
@@ -120,18 +118,16 @@ class LDA():
         if not os.path.exists(model_path):
             os.makedirs(model_path)
         index_path = os.path.join(model_path, 'lda_index_train.index')
-        corp_bow_path = os.path.join(model_path, 'corpus_bow')
-        corp_tfidf_path = os.path.join(model_path, 'corpus_tfidf')
         if os.path.exists(index_path):
-            assert os.path.exists(corp_bow_path) and os.path.exists(os.path.join(corp_tfidf_path)), \
+            assert os.path.exists("./corpus_bow") and os.path.exists(os.path.join("./corpus_tfidf")), \
                 "Corpus file missing! Please rebuild index."
             with open(index_path, "rb") as reader:
                 index = pkl.load(reader)
                 self.index = index["index"]
                 self.index2docid = index["index2docid"]
-            with open(corp_bow_path, "rb") as reader:
+            with open("./corpus_bow", "rb") as reader:
                 self.corpus_bow = pkl.load(reader)
-            with open(corp_tfidf_path, "rb") as reader:
+            with open("./corpus_tfidf", "rb") as reader:
                 self.corpus_tfidf = pkl.load(reader)
             self.model = self.train()
         else:
@@ -173,9 +169,9 @@ class LDA():
                 "index2docid": self.index2docid
             }
             pkl.dump(index, writer)
-        with open(os.path.join(self.model_path, "corpus_bow"), "wb") as writer:
+        with open("./corpus_bow", "wb") as writer:
             pkl.dump(self.corpus_bow, writer)
-        with open(os.path.join(self.model_path, "corpus_tfidf"), "wb") as writer:
+        with open("./corpus_tfidf", "wb") as writer:
             pkl.dump(self.corpus_tfidf, writer)
         if retrain:
             self.model = self.train()
