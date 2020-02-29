@@ -1,6 +1,8 @@
 import read_ap
 import download_ap
 from utils import bow2tfidf, kl_divergence
+import pytrec_eval
+from tqdm import tqdm
 
 import numpy as np
 import os
@@ -19,9 +21,6 @@ class LSI():
         # Set training parameters.
         self.num_topics = num_topics
         self.chunksize = chunksize
-        self.passes = passes
-        self.iterations = iterations
-        self.eval_every = eval_every
         self.no_below = no_below
         self.no_above = no_above
         self.tfidf = tfidf
@@ -30,11 +29,20 @@ class LSI():
         if not os.path.exists(model_path):
             os.makedirs(model_path)
         index_path = os.path.join(model_path, 'lsi_index_train.index')
+        corp_bow_path = os.path.join(model_path, 'corpus_bow')
+        corp_tfidf_path = os.path.join(model_path, 'corpus_tfidf')
         if os.path.exists(index_path):
+            assert os.path.exists(corp_bow_path) and os.path.exists(os.path.join(corp_tfidf_path)),\
+                "Corpus file missing! Please rebuild index."
             with open(index_path, "rb") as reader:
                 index = pkl.load(reader)
                 self.index = index["index"]
                 self.index2docid = index["index2docid"]
+            with open(corp_bow_path, "rb") as reader:
+                self.corpus_bow = pkl.load(reader)
+            with open(corp_tfidf_path, "rb") as reader:
+                self.corpus_tfidf = pkl.load(reader)
+            self.model = self.train()
         else:
             self.rebuild_index(docs, index_path)
 
@@ -45,15 +53,15 @@ class LSI():
         lsi_model = LsiModel(
             corpus=self.corpus_tfidf if self.tfidf else self.corpus_bow,
             id2word=id2word,
-            chunksize=chunksize,
-            num_topics=num_topics
+            chunksize=self.chunksize,
+            num_topics=self.num_topics
         )
         print("done.")
         return lsi_model
 
     def save(self, path="./lsi.model"):
         print("saving LSI model...")
-        self.model.save(path)
+        self.model.save(os.path.join(self.model_path,path))
         print("done.")
 
     def rebuild_index(self, docs, index_path, retrain=True):
@@ -61,14 +69,18 @@ class LSI():
         docs2 = [docs[id] for id in docs]
         self.index = Dictionary(docs2)
         self.index.filter_extremes(no_below=self.no_below, no_above=self.no_above)
+        self.corpus_bow = [self.index.doc2bow(doc) for doc in docs2]
+        self.corpus_tfidf = [bow2tfidf(bow_vec, self.index) for bow_vec in self.corpus_bow]
         with open(index_path, "wb") as writer:
             index = {
                 "index": self.index,
                 "index2docid": self.index2docid
             }
-            pkl.dump(self.index, writer)
-        self.corpus_bow = [d.doc2bow(doc) for doc in docs2]
-        self.corpus_tfidf = [bow2tfidf(bow_vec, d) for bow_vec in self.corpus_bow]
+            pkl.dump(index, writer)
+        with open(os.path.join(self.model_path, "corpus_bow"), "wb") as writer:
+            pkl.dump(self.corpus_bow, writer)
+        with open(os.path.join(self.model_path, "corpus_tfidf"), "wb") as writer:
+            pkl.dump(self.corpus_tfidf, writer)
         if retrain:
             self.model = self.train()
 
@@ -81,12 +93,15 @@ class LSI():
 
         index_path = os.path.join(self.model_path, 'lsi_index_rank.index')
         if first_query:
-            index = similarities.Similarity(self.model[self.corpus_tfidf if self.tfidf else self.corpus_bow])  # transform corpus to LSI space and index it
+            used_corpus = self.corpus_tfidf if self.tfidf else self.corpus_bow
+            index = similarities.Similarity(self.model_path, self.model[used_corpus], len(self.index))  # transform corpus to LSI space and index it
             index.save(index_path)
         else:
             index = similarities.Similarity.load(index_path)
         sims = index[vec_lsi]  # query similarity
         sims = sorted(enumerate(sims), key=lambda item: -item[1])
+        print(sims)
+        sims = [(self.index2docid[idx], value) for (idx, value) in sims]
         return sims
 
 class LDA():
@@ -101,15 +116,25 @@ class LDA():
         self.no_below = no_below
         self.no_above = no_above
         self.tfidf = tfidf
+        self.model_path = model_path
 
         if not os.path.exists(model_path):
             os.makedirs(model_path)
         index_path = os.path.join(model_path, 'lda_index_train.index')
+        corp_bow_path = os.path.join(model_path, 'corpus_bow')
+        corp_tfidf_path = os.path.join(model_path, 'corpus_tfidf')
         if os.path.exists(index_path):
+            assert os.path.exists(corp_bow_path) and os.path.exists(os.path.join(corp_tfidf_path)), \
+                "Corpus file missing! Please rebuild index."
             with open(index_path, "rb") as reader:
                 index = pkl.load(reader)
                 self.index = index["index"]
                 self.index2docid = index["index2docid"]
+            with open(corp_bow_path, "rb") as reader:
+                self.corpus_bow = pkl.load(reader)
+            with open(corp_tfidf_path, "rb") as reader:
+                self.corpus_tfidf = pkl.load(reader)
+            self.model = self.train()
         else:
             self.rebuild_index(docs, index_path)
 
@@ -120,57 +145,60 @@ class LDA():
         lda_model = LdaModel(
             corpus=self.corpus_tfidf if self.tfidf else self.corpus_bow,
             id2word=id2word,
-            chunksize=chunksize,
+            chunksize=self.chunksize,
             alpha='auto',
             eta='auto',
-            iterations=iterations,
-            num_topics=num_topics,
-            passes=passes,
-            eval_every=eval_every
+            iterations=self.iterations,
+            num_topics=self.num_topics,
+            passes=self.passes,
+            eval_every=self.eval_every
         )
         print("done.")
         return  lda_model
 
     def save(self, path="./lda.model" ):
         print("saving LDA model...")
-        self.model.save(path)
+        self.model.save(os.path.join(self.model_path,path))
         print("done.")
 
     def rebuild_index(self, docs, index_path, retrain=True):
-        self.index2docid = {i: id for i, docid in enumerate(docs)}
+        self.index2docid = {i: docid for i, docid in enumerate(docs)}
         docs2 = [docs[id] for id in docs]
         self.index = Dictionary(docs2)
         self.index.filter_extremes(no_below=self.no_below, no_above=self.no_above)
+        self.corpus_bow = [self.index.doc2bow(doc) for doc in docs2]
+        self.corpus_tfidf = [bow2tfidf(bow_vec, self.index) for bow_vec in self.corpus_bow]
         with open(index_path, "wb") as writer:
             index = {
                 "index": self.index,
                 "index2docid": self.index2docid
             }
-            pkl.dump(self.index, writer)
-        self.corpus_bow = [d.doc2bow(doc) for doc in docs2]
-        self.corpus_tfidf = [bow2tfidf(bow_vec, d) for bow_vec in self.corpus_bow]
+            pkl.dump(index, writer)
+        with open(os.path.join(self.model_path, "corpus_bow"), "wb") as writer:
+            pkl.dump(self.corpus_bow, writer)
+        with open(os.path.join(self.model_path, "corpus_tfidf"), "wb") as writer:
+            pkl.dump(self.corpus_tfidf, writer)
         if retrain:
             self.model = self.train()
 
 
-def rank(model, query, d, tfidf_matrix=False, lda=False):
-    query_repr = read_ap.process_text(query)
-    vec_bow = d.doc2bow(query_repr)
-    if tfidf_matrix:
-        vec_bow = bow2tfidf(vec_bow, d)
-    vec_lsi = model[vec_bow]  # convert the query to LSI space
-    print(vec_lsi)
-    if lda:
-        sims = [(index2docid[i], kl_divergence(doc, vec_lsi)) for i, doc in enumerate(index)]
-    index = similarities.Similarity(model[corpus])  # transform corpus to LSI space and index it
-    index.save('/tmp/deerwester.index')
-    index = similarities.Similarity.load('/tmp/deerwester.index')
-    sims = index[vec_lsi]  # perform a similarity query against the corpus
-    print(list(enumerate(sims)))  # print (document_number, document_similarity) 2-tuples
-    sims = sorted(enumerate(sims), key=lambda item: -item[1])
-    #for i, s in enumerate(sims):
-    #   print(s, documents[i])
-    return sims
+    def rank(self, query, first_query=True):
+        query_repr = read_ap.process_text(query)
+        vec_bow = d.doc2bow(query_repr)
+        if self.tfidf:
+            vec_bow = bow2tfidf(vec_bow, self.index)
+        vec_lda = self.model[vec_bow]  # convert the query to LSI space
+        index_path = os.path.join(self.model_path, 'lda_index_rank.index')
+        if first_query:
+            with open(index_path, "wb") as writer:
+                index = self.model[self.corpus_tfidf if self.tfidf else self.corpus_bow]
+                pkl.dump(index, writer)
+        else:
+            with open(index_path, "rb") as reader:
+                index = pkl.load(reader)
+        sims = [(self.index2docid[i], kl_divergence(self.model[doc], vec_lsi)) for i, doc in enumerate(self.index)]
+        sims = sorted(enumerate(sims), key=lambda item: -item[1])
+        return sims
 
 
 if __name__ == "__main__":
@@ -181,6 +209,56 @@ if __name__ == "__main__":
     # pre-process the text
     docs_by_id = read_ap.get_processed_docs()
 
+    lsi_bow = LSI(docs_by_id, tfidf=False, model_path="./lsi_data_bow")
+    lsi_bow.save()
+    lsi_tfidf = LSI(docs_by_id, tfidf=True, model_path="./lsi_data_tfidf")
+    lsi_tfidf.save()
+
+    lda_tfidf = LDA(docs_by_id, tfidf=True, model_path="./lda_data_tfidf")
+    lda_tfidf.save()
+
+    # read in the qrels
+    qrels, queries = read_ap.read_qrels()
+
+    overall_ser_lsi_bow = {}
+    overall_ser_lsi_tfidf = {}
+    overall_ser_lda_tfidf = {}
+
+
+    print("Running TFIDF Benchmark")
+    first_query = True
+    # collect results
+    for qid in tqdm(qrels):
+        query_text = queries[qid]
+
+        results_lsi_bow = lsi_bow.rank(query_text, first_query=first_query)
+        overall_ser_lsi_bow[qid] = dict(results_lsi_bow)
+
+        results_lsi_tfidf = lsi_tfidf.rank(query_text, first_query=first_query)
+        overall_ser_lsi_tfidf[qid] = dict(results_lsi_tfidf)
+
+        results_lda_tfidf = lda_tfidf.rank(query_text, first_query=first_query)
+        overall_ser_lda_tfidf[qid] = dict(results_lda_tfidf)
+        first_query = False
+    # run evaluation with `qrels` as the ground truth relevance judgements
+    # here, we are measuring MAP and NDCG, but this can be changed to
+    # whatever you prefer
+    evaluator = pytrec_eval.RelevanceEvaluator(qrels, {'map', 'ndcg'})
+    metrics_lsi_bow = evaluator.evaluate(overall_ser_lsi_bow)
+    metrics_lsi_tfidf = evaluator.evaluate(overall_ser_lsi_tfidf)
+    metrics_lda_tfidf = evaluator.evaluate(overall_ser_lda_tfidf)
+
+
+    # dump this to JSON
+    # *Not* Optional - This is submitted in the assignment!
+    with open("lsi_bow.json", "w") as writer:
+        json.dump(metrics_lsi_bow, writer, indent=1)
+    with open("lsi_tfidf.json", "w") as writer:
+        json.dump(metrics_lsi_tfidf, writer, indent=1)
+    with open("lda_tfidf.json", "w") as writer:
+        json.dump(metrics_lda_tfidf, writer, indent=1)
+
+    """
     # Set training parameters.
     num_topics = 50 #500
     chunksize = 2000
@@ -194,14 +272,14 @@ if __name__ == "__main__":
     d.filter_extremes(no_below=50, no_above=0.5)
     corpus = [d.doc2bow(doc) for doc in docs]
     corpus_tfidf = [bow2tfidf(bow_vec, d) for bow_vec in corpus]
-    """
-    lsi_bow = LsiModel(corpus, id2word=d, num_topics=num_topics)
-    lsi_bow.save("./bow_lsi_01.model")  # save model
-    print(lsi_bow.print_topics(5, 10))
-    lsi_tfidf = LsiModel(corpus_tfidf, id2word=d, num_topics=num_topics)
-    lsi_tfidf.save("./lsi_tfidf_01.model")  # save model
-    print(lsi_tfidf.print_topics(5, 10))
-    """
+    
+    #lsi_bow = LsiModel(corpus, id2word=d, num_topics=num_topics)
+    #lsi_bow.save("./bow_lsi_01.model")  # save model
+    #print(lsi_bow.print_topics(5, 10))
+    #lsi_tfidf = LsiModel(corpus_tfidf, id2word=d, num_topics=num_topics)
+    #lsi_tfidf.save("./lsi_tfidf_01.model")  # save model
+    #print(lsi_tfidf.print_topics(5, 10))
+
     print("Start LDA")
     lda_model = LdaModel(
         corpus=corpus_tfidf,
@@ -225,6 +303,8 @@ if __name__ == "__main__":
     corp_lda = vec_lsi = lda_model[corpus_tfidf]
     print(len(corp_lda))
     print(len(corp_lda[0]))
+    """
+
     """
     #dictionary = Dictionary(docs_by_id)
     #dictionary.filter_extremes(no_below=50, no_above=0.5)

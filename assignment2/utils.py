@@ -67,7 +67,9 @@ def list_of_tuples2np_array(li):
 def kl_divergence(p, q):
     p = list_of_tuples2np_array(p)
     q = list_of_tuples2np_array(q)
-    return float(np.sum(np.where(p != 0, p * np.log(p / q), 0)))
+    sum_pq = np.sum(np.where(p != 0, p * np.log(p / q), 0))
+    sum_qp = np.sum(np.where(q != 0, q * np.log(q / p), 0))
+    return float((sum_pq + sum_qp) / 2)
 
 
 def cosine_similarity(a,b):
