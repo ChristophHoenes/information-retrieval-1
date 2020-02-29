@@ -40,7 +40,10 @@ class LSI():
                 self.corpus_bow = pkl.load(reader)
             with open("./corpus_tfidf", "rb") as reader:
                 self.corpus_tfidf = pkl.load(reader)
-            self.model = self.train()
+            if os.path.exists(os.path.join(self.model_path, "lsi.model")):
+                self.model = LsiModel.load(os.path.join(self.model_path, "lsi.model"))
+            else:
+                self.model = self.train()
         else:
             self.rebuild_index(docs, index_path)
 
@@ -129,7 +132,10 @@ class LDA():
                 self.corpus_bow = pkl.load(reader)
             with open("./corpus_tfidf", "rb") as reader:
                 self.corpus_tfidf = pkl.load(reader)
-            self.model = self.train()
+            if os.path.exists(os.path.join(self.model_path, "lda.model")):
+                self.model = LsiModel.load(os.path.join(self.model_path, "lda.model"))
+            else:
+                self.model = self.train()
         else:
             self.rebuild_index(docs, index_path)
 
@@ -206,12 +212,12 @@ if __name__ == "__main__":
     # pre-process the text
     docs_by_id = read_ap.get_processed_docs()
 
-    lsi_bow = LSI(docs_by_id, tfidf=False, model_path="./lsi_data_bow")
+    lsi_bow = LSI(docs_by_id, num_topics=10, tfidf=False, model_path="./lsi_data_bow10")
     lsi_bow.save()
-    lsi_tfidf = LSI(docs_by_id, tfidf=True, model_path="./lsi_data_tfidf")
+    lsi_tfidf = LSI(docs_by_id, num_topics=10, tfidf=True, model_path="./lsi_data_tfidf10")
     lsi_tfidf.save()
 
-    lda_tfidf = LDA(docs_by_id, tfidf=True, model_path="./lda_data_tfidf")
+    lda_tfidf = LDA(docs_by_id, num_topics=10, tfidf=False, model_path="./lda_data_bow10")
     lda_tfidf.save()
 
     # read in the qrels
@@ -258,8 +264,8 @@ if __name__ == "__main__":
         json.dump(metrics_lda_tfidf, writer, indent=1)
 
     overall_rankings = [('overall_ser_lsi_bow', overall_ser_lsi_bow),
-                        ('overall_ser_lsi_tfidf', overall_ser_lsi_tfidf),
-                        ('overall_ser_lda_tfidf', overall_ser_lda_tfidf)]
+                        ('overall_ser_lsi_tfidf', overall_ser_lsi_tfidf)]#,
+                        #('overall_ser_lda_tfidf', overall_ser_lda_tfidf)]
     # write file with all query-doc pairs, scores, ranks, etc.
     for o_name, o in overall_rankings:
         f = open(o_name + ".dat", "w")
