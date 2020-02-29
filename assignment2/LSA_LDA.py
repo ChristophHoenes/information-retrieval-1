@@ -65,8 +65,8 @@ class LSI():
         print("done.")
 
     def rebuild_index(self, docs, index_path, retrain=True):
-        self.index2docid = {i: id for i, docid in enumerate(docs)}
-        docs2 = [docs[id] for id in docs]
+        self.index2docid = {i: docid for i, docid in enumerate(docs)}
+        docs2 = [docs[docid] for docid in docs]
         self.index = Dictionary(docs2)
         self.index.filter_extremes(no_below=self.no_below, no_above=self.no_above)
         self.corpus_bow = [self.index.doc2bow(doc) for doc in docs2]
@@ -100,7 +100,6 @@ class LSI():
             index = similarities.Similarity.load(index_path)
         sims = index[vec_lsi]  # query similarity
         sims = sorted(enumerate(sims), key=lambda item: -item[1])
-        print(sims)
         sims = [(self.index2docid[idx], value) for (idx, value) in sims]
         return sims
 
@@ -163,7 +162,7 @@ class LDA():
 
     def rebuild_index(self, docs, index_path, retrain=True):
         self.index2docid = {i: docid for i, docid in enumerate(docs)}
-        docs2 = [docs[id] for id in docs]
+        docs2 = [docs[docid] for docid in docs]
         self.index = Dictionary(docs2)
         self.index.filter_extremes(no_below=self.no_below, no_above=self.no_above)
         self.corpus_bow = [self.index.doc2bow(doc) for doc in docs2]
@@ -196,8 +195,8 @@ class LDA():
         else:
             with open(index_path, "rb") as reader:
                 index = pkl.load(reader)
-        sims = [(self.index2docid[i], kl_divergence(self.model[doc], vec_lsi)) for i, doc in enumerate(self.index)]
-        sims = sorted(enumerate(sims), key=lambda item: -item[1])
+        sims = [(self.index2docid[i], kl_divergence(self.model[doc], vec_lda)) for i, doc in enumerate(self.index)]
+        sims = sorted(enumerate(sims), key=lambda item: item[1])
         return sims
 
 
@@ -237,8 +236,8 @@ if __name__ == "__main__":
         results_lsi_tfidf = lsi_tfidf.rank(query_text, first_query=first_query)
         overall_ser_lsi_tfidf[qid] = dict(results_lsi_tfidf)
 
-        results_lda_tfidf = lda_tfidf.rank(query_text, first_query=first_query)
-        overall_ser_lda_tfidf[qid] = dict(results_lda_tfidf)
+        #results_lda_tfidf = lda_tfidf.rank(query_text, first_query=first_query)
+        #overall_ser_lda_tfidf[qid] = dict(results_lda_tfidf)
         first_query = False
     # run evaluation with `qrels` as the ground truth relevance judgements
     # here, we are measuring MAP and NDCG, but this can be changed to
@@ -246,7 +245,7 @@ if __name__ == "__main__":
     evaluator = pytrec_eval.RelevanceEvaluator(qrels, {'map', 'ndcg'})
     metrics_lsi_bow = evaluator.evaluate(overall_ser_lsi_bow)
     metrics_lsi_tfidf = evaluator.evaluate(overall_ser_lsi_tfidf)
-    metrics_lda_tfidf = evaluator.evaluate(overall_ser_lda_tfidf)
+    #metrics_lda_tfidf = evaluator.evaluate(overall_ser_lda_tfidf)
 
 
     # dump this to JSON
@@ -266,8 +265,8 @@ if __name__ == "__main__":
     iterations = 400
     eval_every = 1  # Don't evaluate model perplexity, takes too much time.
 
-    index2docid = {i:id for i, id in enumerate(docs_by_id)}
-    docs = [docs_by_id[id] for id in docs_by_id]
+    index2docid = {i:docid for i, docid in enumerate(docs_by_id)}
+    docs = [docs_by_id[docid] for docid in docs_by_id]
     d = Dictionary(docs)
     d.filter_extremes(no_below=50, no_above=0.5)
     corpus = [d.doc2bow(doc) for doc in docs]
