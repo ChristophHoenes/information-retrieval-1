@@ -100,7 +100,7 @@ class LSI():
             index = similarities.Similarity.load(index_path)
         sims = index[vec_lsi]  # query similarity
         sims = sorted(enumerate(sims), key=lambda item: -item[1])
-        sims = [(self.index2docid[idx], value) for (idx, value) in sims]
+        sims = [(self.index2docid[idx], np.float64(value)) for (idx, value) in sims]
         return sims
 
 class LDA():
@@ -195,8 +195,10 @@ class LDA():
         else:
             with open(index_path, "rb") as reader:
                 index = pkl.load(reader)
-        sims = [(self.index2docid[i], kl_divergence(self.model[doc], vec_lda)) for i, doc in enumerate(self.index)]
-        sims = sorted(enumerate(sims), key=lambda item: item[1])
+        #sims = [(self.index2docid[i], kl_divergence(self.model[doc], vec_lda)) for i, doc in enumerate(index)]
+        sims = [kl_divergence(self.model[doc], vec_lda) for doc in index]
+        sims = sorted(enumerate(sims), key=lambda item: -item[1])
+        sims = [(self.index2docid[idx], np.float64(value)) for (idx, value) in sims]
         return sims
 
 
@@ -236,8 +238,8 @@ if __name__ == "__main__":
         results_lsi_tfidf = lsi_tfidf.rank(query_text, first_query=first_query)
         overall_ser_lsi_tfidf[qid] = dict(results_lsi_tfidf)
 
-        #results_lda_tfidf = lda_tfidf.rank(query_text, first_query=first_query)
-        #overall_ser_lda_tfidf[qid] = dict(results_lda_tfidf)
+        results_lda_tfidf = lda_tfidf.rank(query_text, first_query=first_query)
+        overall_ser_lda_tfidf[qid] = dict(results_lda_tfidf)
         first_query = False
     # run evaluation with `qrels` as the ground truth relevance judgements
     # here, we are measuring MAP and NDCG, but this can be changed to
@@ -245,7 +247,9 @@ if __name__ == "__main__":
     evaluator = pytrec_eval.RelevanceEvaluator(qrels, {'map', 'ndcg'})
     metrics_lsi_bow = evaluator.evaluate(overall_ser_lsi_bow)
     metrics_lsi_tfidf = evaluator.evaluate(overall_ser_lsi_tfidf)
-    #metrics_lda_tfidf = evaluator.evaluate(overall_ser_lda_tfidf)
+    print('get metrics LDA...')
+    metrics_lda_tfidf = evaluator.evaluate(overall_ser_lda_tfidf)
+    print('done.')
 
 
     # dump this to JSON
@@ -256,7 +260,7 @@ if __name__ == "__main__":
         json.dump(metrics_lsi_tfidf, writer, indent=1)
     with open("lda_tfidf.json", "w") as writer:
         json.dump(metrics_lda_tfidf, writer, indent=1)
-
+    print('programm finished without error')
     """
     # Set training parameters.
     num_topics = 50 #500
