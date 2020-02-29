@@ -94,7 +94,7 @@ class LSI():
         index_path = os.path.join(self.model_path, 'lsi_index_rank.index')
         if first_query:
             used_corpus = self.corpus_tfidf if self.tfidf else self.corpus_bow
-            index = similarities.Similarity(self.model_path, self.model[used_corpus], len(self.index))  # transform corpus to LSI space and index it
+            index = similarities.Similarity(os.path.join(self.model_path,"shard"), self.model[used_corpus], len(self.index))  # transform corpus to LSI space and index it
             index.save(index_path)
         else:
             index = similarities.Similarity.load(index_path)
@@ -184,7 +184,7 @@ class LDA():
 
     def rank(self, query, first_query=True):
         query_repr = read_ap.process_text(query)
-        vec_bow = d.doc2bow(query_repr)
+        vec_bow = self.index.doc2bow(query_repr)
         if self.tfidf:
             vec_bow = bow2tfidf(vec_bow, self.index)
         vec_lda = self.model[vec_bow]  # convert the query to LSI space
@@ -209,12 +209,12 @@ if __name__ == "__main__":
     # pre-process the text
     docs_by_id = read_ap.get_processed_docs()
 
-    lsi_bow = LSI(docs_by_id, tfidf=False, model_path="./lsi_data_bow")
+    lsi_bow = LSI(docs_by_id, num_topics=10, tfidf=False, model_path="./lsi_data_bow")
     lsi_bow.save()
-    lsi_tfidf = LSI(docs_by_id, tfidf=True, model_path="./lsi_data_tfidf")
+    lsi_tfidf = LSI(docs_by_id, num_topics=10, tfidf=True, model_path="./lsi_data_tfidf")
     lsi_tfidf.save()
 
-    lda_tfidf = LDA(docs_by_id, tfidf=True, model_path="./lda_data_tfidf")
+    lda_tfidf = LDA(docs_by_id, num_topics=10, tfidf=True, model_path="./lda_data_tfidf")
     lda_tfidf.save()
 
     # read in the qrels
@@ -225,7 +225,7 @@ if __name__ == "__main__":
     overall_ser_lda_tfidf = {}
 
 
-    print("Running TFIDF Benchmark")
+    print("Running Benchmarks...")
     first_query = True
     # collect results
     for qid in tqdm(qrels):
