@@ -201,7 +201,7 @@ if __name__ == "__main__":
         with open(docs_path, "wb") as writer:
             pkl.dump(docs_by_id, writer)
     """
-    window_size = 15
+    window_size = 5
     embedding_dim = 300
     docs_by_id = read_ap.get_processed_docs()
     #print('done')
