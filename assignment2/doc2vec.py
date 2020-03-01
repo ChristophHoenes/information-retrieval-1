@@ -72,7 +72,6 @@ class Doc2Vec:
         orig = orig.unsqueeze(1).repeat(1, len(self.docs))
         cos = nn.CosineSimilarity(dim=0, eps=1e-6)
         prod = cos(orig, self.doc_vecs)
-        print('sorting results')
         indices = (-prod.numpy()).argsort()
         results = [(self.idx2docid[index], float(prod.numpy()[index])) for index in indices]
         return results
