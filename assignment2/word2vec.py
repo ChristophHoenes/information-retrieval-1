@@ -14,6 +14,7 @@ import json
 
 class W2v:
     def __init__(self, wind_size, docs=None, embedding_dim=300):
+        # if docs is not given, the embeddings are loaded from file
         if docs == None:
             self.load_embedding(wind_size)
             self.embedding_dim = embedding_dim
@@ -89,15 +90,9 @@ class W2v:
         while count < num:
             doc_id = random.sample(self.doc_ids, 1)[0]
             indices = [self.word2idx[word] if word in self.word2idx else 0 for word in self.docs[doc_id]]
-            #    print(count/num)
             for pos in range(len(indices)):
                 context_poses = list(range(pos-wind_size, pos+wind_size+1))
-
-                try:
-                    contexts = [indices[cont] for cont in context_poses if (0 <= cont < len(indices))]
-                except Exception:
-                    print('here', context_poses)
-                    print(indices)
+                contexts = [indices[cont] for cont in context_poses if (0 <= cont < len(indices))]
                 for context_pos in context_poses:
                     if context_pos == pos:
                         continue
@@ -147,30 +142,20 @@ class W2v:
             context = torch.tensor(pairs[:, 1]).long()
             labels = torch.tensor(pairs[:, 2]).float()
 
-            #input_center = torch.zeros(batch_size, len(self.vocab))
-            #input_context = torch.zeros(batch_size, len(self.vocab))
-            """
-            for j in range(len(center)):
-                input_center[j, center[j]] = 1.0
-                input_context[j, context[j]] = 1.0
-            """
             out1 = l1(center)
             out2 = l2(context)
             shape = out1.shape
-            #print(shape)
             dot_prods = torch.bmm(out1.view(shape[0], 1, shape[1]), out2.view(shape[0], shape[1], 1))
             dot_prods = dot_prods.squeeze()
 
             logits = torch.sigmoid(dot_prods)
             loss = criterion(logits, labels)
-            #print("Iteration {}: {}".format(i, loss))
             loss.backward()
             optimizer.step()
 
             if i%100 == 0:
                 print("Iteration {}: {}".format(i, loss))
         wvs = l1.weight.data.cpu().numpy()
-        #print(wvs)
         np.save('./w2v_weights_'+str(wind_size)+'.npy', wvs)
         with open('./word2idx_'+str(wind_size)+'.pickle', 'wb') as pickle_file:
             pkl.dump(self.word2idx, pickle_file)
@@ -178,6 +163,7 @@ class W2v:
             pkl.dump(self.idx2word, pickle_file)
         self.embedding = l1
 
+    # gets k most similar words
     def most_similar(self, word, k):
         word_vector = self.get_word_vec(word)
         similarities = torch.zeros(len(self.idx2word))
@@ -232,27 +218,11 @@ class W2v:
 if __name__ == "__main__":
     # ensure dataset is downloaded
     download_ap.download_dataset()
-    # pre-process the text
-    """
-    docs_path = "./w2v_docs"
-    if os.path.exists(docs_path):
-        with open(docs_path, "rb") as reader:
-            docs_by_id = pkl.load(reader)
-    else:
-        docs_by_id = read_ap.get_processed_docs()
-        with open(docs_path, "wb") as writer:
-            pkl.dump(docs_by_id, writer)
-    """
     window_size = 5
     embedding_dim = 300
-    docs_by_id = read_ap.get_processed_docs()
-#    test = {}
-#    for i, doc in enumerate(docs_by_id):
-#        if i >10:
-#            break
-#        test[doc] = docs_by_id[doc]
 
-    # uncomment the following to train doc2vec
+    docs_by_id = read_ap.get_processed_docs()
+    # uncomment the following to train word2vec
     #w2v = W2v(window_size, docs_by_id, embedding_dim)
     #w2v.train_nn(embedding_dim, window_size)
     #print('done training')
