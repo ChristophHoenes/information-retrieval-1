@@ -119,7 +119,6 @@ if __name__ == "__main__":
 
     lsi = LSI(docs_by_id, num_topics=10, tfidf=True, model_path="./lsi_data_")
     topic_params = [1000, 2000, 500, 100, 50, 10]
-    topic_params = [10]
     for t in topic_params:
         for tfidf in [False, True]:
             lsi.num_topics = t
