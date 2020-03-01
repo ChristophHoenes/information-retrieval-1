@@ -9,6 +9,7 @@ import numpy as np
 import os
 import json
 import pickle as pkl
+from pprint import pprint
 
 from gensim.models import LsiModel, LdaModel
 from gensim import similarities
@@ -222,14 +223,18 @@ if __name__ == "__main__":
 
     lsi = LSI(docs_by_id, num_topics=10, tfidf=True, model_path="./lsi_data_")
     topic_params = [1000, 2000, 500, 100, 50, 10]
+    topic_params = [10]
     for t in topic_params:
         for tfidf in [False, True]:
             lsi.num_topics = t
             lsi.tfidf = tfidf
-            lsi.train()
             tfidf_tag = "tfidf" if tfidf else "bow"
+            run_token = "Lsi" + tfidf_tag + str(t)
+            print("train "+run_token)
+            lsi.train()
+            with open(os.path.join(lsi.model_path,"top_topics_"+run_token+".txt"), 'w') as f:
+                pprint(lsi.model.print_topics(num_topics=5), stream=f)
             eval_path = os.path.join(lsi.model_path, "lsi_" + tfidf_tag + str(t))
-            print("Lsi"+tfidf_tag+str(t))
             evaluate_model(lsi, qrels, queries, eval_path+".json",
                            eval_path+".trec", "Lsi"+tfidf_tag+str(t))
 
@@ -245,7 +250,7 @@ if __name__ == "__main__":
     #print("read in queries...")
     #qrels, queries = read_ap.read_qrels()
     #print("done")
-    evaluate_model(lda_bow, qrels, queries, "./lda_data_bow500/lda_bow500.json", "./lda_data_bow10/lda_bow500.trec", 'LdaBow500')
+    #evaluate_model(lda_bow, qrels, queries, "./lda_data_bow500/lda_bow500.json", "./lda_data_bow10/lda_bow500.trec", 'LdaBow500')
 
     """
     overall_ser_lsi_bow = {}
