@@ -28,7 +28,7 @@ class LSI():
 
         if not os.path.exists(model_path):
             os.makedirs(model_path)
-        index_path = os.path.join(model_path, 'lsi_index_train.index')
+        index_path = './data.index'
         if os.path.exists(index_path):
             assert os.path.exists("./corpus_bow") and os.path.exists(os.path.join("./corpus_tfidf")),\
                 "Corpus file missing! Please rebuild index."
@@ -120,7 +120,7 @@ class LDA():
 
         if not os.path.exists(model_path):
             os.makedirs(model_path)
-        index_path = os.path.join(model_path, 'lda_index_train.index')
+        index_path = './data.index'
         if os.path.exists(index_path):
             assert os.path.exists("./corpus_bow") and os.path.exists(os.path.join("./corpus_tfidf")), \
                 "Corpus file missing! Please rebuild index."
