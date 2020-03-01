@@ -133,3 +133,4 @@ if __name__ == "__main__":
             eval_path = os.path.join(lsi.model_path, "lsi_" + tfidf_tag + str(t))
             evaluate_model(lsi, qrels, queries, eval_path+".json",
                            eval_path+".trec", "Lsi"+tfidf_tag+str(t))
+
