@@ -195,13 +195,13 @@ class LDA():
         index_path = os.path.join(self.model_path, 'lda_index_rank.index')
         if first_query:
             with open(index_path, "wb") as writer:
-                index = self.model[self.corpus_tfidf if self.tfidf else self.corpus_bow]
-                pkl.dump(index, writer)
-        else:
-            with open(index_path, "rb") as reader:
-                index = pkl.load(reader)
+                self.rank_index = self.model[self.corpus_tfidf if self.tfidf else self.corpus_bow]
+                pkl.dump(self.rank_index, writer)
+        #else:
+        #    with open(index_path, "rb") as reader:
+        #        index = pkl.load(reader)
         #sims = [(self.index2docid[i], kl_divergence(self.model[doc], vec_lda)) for i, doc in enumerate(index)]
-        sims = [kl_divergence(self.model[doc], vec_lda, self.num_topics) for doc in index]
+        sims = [kl_divergence(doc, vec_lda, self.num_topics) for doc in self.rank_index]
         sims = sorted(enumerate(sims), key=lambda item: -item[1])
         sims = [(self.index2docid[idx], np.float64(value)) for (idx, value) in sims]
         return sims
@@ -245,7 +245,7 @@ if __name__ == "__main__":
     #print("read in queries...")
     #qrels, queries = read_ap.read_qrels()
     #print("done")
-    #evaluate_model(lda_tfidf, qrels, queries, "./lda_data_bow10/lda_bow10.json", "./lda_data_bow10/lda_bow10.trec", 'LdaBow10')
+    evaluate_model(lda_bow, qrels, queries, "./lda_data_bow500/lda_bow500.json", "./lda_data_bow10/lda_bow500.trec", 'LdaBow500')
 
     """
     overall_ser_lsi_bow = {}
