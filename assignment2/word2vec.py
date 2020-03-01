@@ -17,6 +17,7 @@ class W2v:
         if docs == None:
             self.load_embedding(wind_size)
             self.embedding_dim = embedding_dim
+            self.doc_vecs = None
         else:
             self.doc_ids = docs.keys()
             self.docs = docs
@@ -69,6 +70,7 @@ class W2v:
             self.vocab = self.word2idx.keys()
             self.embedding = None
             self.embedding_dim = embedding_dim
+            self.doc_vecs = None
 
     def load_embedding(self, wind_size):
         weights = torch.tensor(np.load('./w2v_weights_'+str(wind_size)+'.npy', allow_pickle=True))
@@ -182,7 +184,6 @@ class W2v:
         cos = nn.CosineSimilarity(dim=0, eps=1e-6)
         for i in self.idx2word:
             similarities[i] = abs(cos(word_vector, self.get_word_vec(self.idx2word[i])))
-        #print(similarities.shape)
         indices = (-similarities.numpy()).argsort()[:k]
         results = [self.idx2word[idx] for idx in indices]
         return results
@@ -199,7 +200,6 @@ class W2v:
         for i, token in enumerate(doc):
             wvs[i] = self.get_word_vec(token)
         doc_vec = agg_mode(wvs, dim=0)
-        #print(doc_vec.shape)
         return doc_vec
 
     def get_doc_vecs(self, docs):
@@ -211,19 +211,19 @@ class W2v:
             doc_vecs_list.append(self.get_doc_vec(self.docs[doc_id]))
             idx2docid[i] = doc_id
         doc_vecs = torch.stack(doc_vecs_list, dim=1)
-        print(doc_vecs.shape)
         self.doc_vecs = doc_vecs
         self.idx2docid = idx2docid
+        with open('v2w_docvecs.pkl', 'wb') as writer:
+            pkl.dump(self.doc_vecs, writer)
+        with open('v2w_docvecs_idx.pkl', 'wb') as writer:
+            pkl.dump(self.idx2docid, writer)
 
     def search(self, query):
-        if self.doc_vecs == None:
-            raise Exception('Forgot to call get_doc_vecs() before ranking.')
         query_repr = read_ap.process_text(query)
         orig = self.get_doc_vec(query_repr)
         orig = orig.unsqueeze(1).repeat(1, len(self.docs))
         cos = nn.CosineSimilarity(dim=0, eps=1e-6)
         prod = cos(orig, self.doc_vecs)
-        print('sorting results')
         indices = (-prod.numpy()).argsort()
         results = [(self.idx2docid[index], float(prod.numpy()[index])) for index in indices]
         return results
@@ -246,6 +246,11 @@ if __name__ == "__main__":
     window_size = 5
     embedding_dim = 300
     docs_by_id = read_ap.get_processed_docs()
+#    test = {}
+#    for i, doc in enumerate(docs_by_id):
+#        if i >10:
+#            break
+#        test[doc] = docs_by_id[doc]
 
     # uncomment the following to train doc2vec
     #w2v = W2v(window_size, docs_by_id, embedding_dim)
