@@ -127,8 +127,8 @@ class W2v:
     def train_nn(self, embedding_dim, wind_size):
         iterations = 200000
 
-        l1 = nn.Embedding(len(self.vocab), embedding_dim, sparse=True).cuda()
-        l2 = nn.Embedding(len(self.vocab), embedding_dim, sparse=True).cuda()
+        l1 = nn.Embedding(len(self.vocab), embedding_dim, sparse=True)
+        l2 = nn.Embedding(len(self.vocab), embedding_dim, sparse=True)
         params = list(l1.parameters()) + list(l2.parameters())
         lr = 0.001
         batch_size = 1024
@@ -138,9 +138,9 @@ class W2v:
         for i in range(iterations):
             optimizer.zero_grad()
             pairs = self.get_pairs(batch_size, wind_size)
-            center = torch.tensor(pairs[:, 0]).long().cuda()
-            context = torch.tensor(pairs[:, 1]).long().cuda()
-            labels = torch.tensor(pairs[:, 2]).float().cuda()
+            center = torch.tensor(pairs[:, 0]).long()
+            context = torch.tensor(pairs[:, 1]).long()
+            labels = torch.tensor(pairs[:, 2]).float()
 
             #input_center = torch.zeros(batch_size, len(self.vocab))
             #input_context = torch.zeros(batch_size, len(self.vocab))
@@ -201,17 +201,17 @@ if __name__ == "__main__":
         with open(docs_path, "wb") as writer:
             pkl.dump(docs_by_id, writer)
     """
-    window_size = 15
+    window_size = 5
     embedding_dim = 300
     docs_by_id = read_ap.get_processed_docs()
     #print('done')
-    w2v = W2v(window_size, docs_by_id)
-    w2v.train_nn(embedding_dim, window_size)
+    #w2v = W2v(window_size, docs_by_id)
+    #w2v.train_nn(embedding_dim, window_size)
     print('done training')
-    #w2v = W2v(window_size)
+    w2v = W2v(window_size)
     #embedding = load_embedding()
     #print(weights.shape)
-    #word = 'dog'
-    #k = 10
-    #similar = w2v.most_similar(word, k)
-    #print(similar)
+    word = 'green'
+    k = 10
+    similar = w2v.most_similar(word, k)
+    print(similar)
