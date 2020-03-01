@@ -198,7 +198,7 @@ class LDA():
             with open(index_path, "rb") as reader:
                 index = pkl.load(reader)
         #sims = [(self.index2docid[i], kl_divergence(self.model[doc], vec_lda)) for i, doc in enumerate(index)]
-        sims = [kl_divergence(self.model[doc], vec_lda) for doc in index]
+        sims = [kl_divergence(self.model[doc], vec_lda, self.num_topics) for doc in index]
         sims = sorted(enumerate(sims), key=lambda item: -item[1])
         sims = [(self.index2docid[idx], np.float64(value)) for (idx, value) in sims]
         return sims

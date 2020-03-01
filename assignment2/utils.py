@@ -57,16 +57,16 @@ def bow2tfidf(bow_vec, d):
     return result
 
 
-def list_of_tuples2np_array(li):
-    result = np.zeros(len(li))
+def list_of_tuples2np_array(li, num_topics):
+    result = np.zeros(num_topics)
     for (idx, value) in li:
         result[idx] = value
     return result
 
 
-def kl_divergence(p, q):
-    p = list_of_tuples2np_array(p)
-    q = list_of_tuples2np_array(q)
+def kl_divergence(p, q, num_topics):
+    p = list_of_tuples2np_array(p, num_topics)
+    q = list_of_tuples2np_array(q, num_topics)
     sum_pq = np.sum(np.where(p != 0, p * np.log(p / q), 0))
     sum_qp = np.sum(np.where(q != 0, q * np.log(q / p), 0))
     return float((sum_pq + sum_qp) / 2)
