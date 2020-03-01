@@ -7,5 +7,5 @@ If you want to train the model, uncomment the line and expect training times of 
 ## Doc2Vec
 Our Doc2Vec class can be found in doc2vec.py. If this file is run as main the ten most similar documents to a randomly sampled document are written to a json file.
 Since the parameters for Doc2Vec had to be fine-tuned, the respective script can be found in config_d2v.py. CAUTION: Running this will train the model for all the different parameter options and takes a long time.
-The evaluation of the rankings for Doc2Vec can be done with compare_configs.py.
+Single models can also be run using the run_one_setting method. The evaluation of the rankings for Doc2Vec can be done with compare_configs.py. This also creates the trec files.
 
