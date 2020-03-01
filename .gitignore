@@ -11,4 +11,10 @@ assignment2/processed_docs*
 assignment2/tf-idf.json
 assignment2/tfidf_index
 assignment2/.ipynb_checkpoints*
-assignment2/results*
+
+assignment2/models*
+assignment2/results/LDA10.dat
+assignment2/results/LDA100.dat
+assignment2/results/LDA50.dat
+assignment2/results/LDA500.dat
+assignment2/results/TF-IDF.dat
