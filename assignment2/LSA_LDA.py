@@ -1,6 +1,7 @@
 import read_ap
 import download_ap
 from utils import bow2tfidf, kl_divergence
+from evaluate import evaluate_model
 import pytrec_eval
 from tqdm import tqdm
 
@@ -57,6 +58,7 @@ class LSI():
             chunksize=self.chunksize,
             num_topics=self.num_topics
         )
+        self.model = lsi_model
         print("done.")
         return lsi_model
 
@@ -83,7 +85,7 @@ class LSI():
         with open("./corpus_tfidf", "wb") as writer:
             pkl.dump(self.corpus_tfidf, writer)
         if retrain:
-            self.model = self.train()
+            _ = self.train()
 
     def rank(self, query, first_query=True):
         query_repr = read_ap.process_text(query)
@@ -93,7 +95,7 @@ class LSI():
         vec_lsi = self.model[vec_bow]  # convert the query to LSI space
 
         index_path = os.path.join(self.model_path, 'lsi_index_rank.index')
-        if first_query:
+        if first_query:  # and not os.path.exists(os.path.join(self.model_path, 'lsi_index_rank.index')):
             used_corpus = self.corpus_tfidf if self.tfidf else self.corpus_bow
             index = similarities.Similarity(os.path.join(self.model_path,"shard"), self.model[used_corpus], len(self.index))  # transform corpus to LSI space and index it
             index.save(index_path)
@@ -154,8 +156,9 @@ class LDA():
             passes=self.passes,
             eval_every=self.eval_every
         )
+        self.model = lda_model
         print("done.")
-        return  lda_model
+        return lda_model
 
     def save(self, path="./lda.model" ):
         print("saving LDA model...")
@@ -180,7 +183,7 @@ class LDA():
         with open("./corpus_tfidf", "wb") as writer:
             pkl.dump(self.corpus_tfidf, writer)
         if retrain:
-            self.model = self.train()
+            _ = self.train()
 
 
     def rank(self, query, first_query=True):
@@ -212,21 +215,42 @@ if __name__ == "__main__":
     # pre-process the text
     docs_by_id = read_ap.get_processed_docs()
 
-    lsi_bow = LSI(docs_by_id, num_topics=10, tfidf=False, model_path="./lsi_data_bow10")
-    lsi_bow.save()
-    lsi_tfidf = LSI(docs_by_id, num_topics=10, tfidf=True, model_path="./lsi_data_tfidf10")
-    lsi_tfidf.save()
+    # read in the qrels
+    print("read in queries...")
+    qrels, queries = read_ap.read_qrels()
+    print("done")
 
-    lda_tfidf = LDA(docs_by_id, num_topics=10, tfidf=False, model_path="./lda_data_bow10")
-    lda_tfidf.save()
+    lsi = LSI(docs_by_id, num_topics=10, tfidf=True, model_path="./lsi_data_")
+    topic_params = [1000, 2000, 500, 100, 50, 10]
+    for t in topic_params:
+        for tfidf in [False, True]:
+            lsi.num_topics = t
+            lsi.tfidf = tfidf
+            lsi.train()
+            tfidf_tag = "tfidf" if tfidf else "bow"
+            eval_path = os.path.join(lsi.model_path, "lsi_" + tfidf_tag + str(t))
+            print(tfidf_tag)
+            evaluate_model(lsi, qrels, queries, eval_path+".json",
+                           eval_path+".trec", "Lsi"+tfidf_tag+str(t))
+
+    #lsi_bow = LSI(docs_by_id, num_topics=10, tfidf=False, model_path="./lsi_data_bow10")
+    #lsi_bow.save()
+    #lsi_tfidf = LSI(docs_by_id, num_topics=10, tfidf=True, model_path="./lsi_data_tfidf10")
+    #lsi_tfidf.save()
+
+    #lda_tfidf = LDA(docs_by_id, num_topics=10, tfidf=False, model_path="./lda_data_bow10")
+    #lda_tfidf.save()
 
     # read in the qrels
-    qrels, queries = read_ap.read_qrels()
+    #print("read in queries...")
+    #qrels, queries = read_ap.read_qrels()
+    #print("done")
+    #evaluate_model(lda_tfidf, qrels, queries, "./lda_data_bow10/lda_bow10.json", "./lda_data_bow10/lda_bow10.trec", 'LdaBow10')
 
+    """
     overall_ser_lsi_bow = {}
     overall_ser_lsi_tfidf = {}
     overall_ser_lda_tfidf = {}
-
 
     print("Running Benchmarks...")
     first_query = True
@@ -279,6 +303,7 @@ if __name__ == "__main__":
                 f.write(f"{qid} Q0 {docid} {rank} {score} STANDARD\n")
                 prevscore = score
         f.close()
+    """
     print('programm finished without error')
     """
     # Set training parameters.

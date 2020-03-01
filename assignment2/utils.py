@@ -61,7 +61,7 @@ def list_of_tuples2np_array(li, num_topics):
     result = np.zeros(num_topics)
     for (idx, value) in li:
         result[idx] = value
-    return result
+    return result+1e-8
 
 
 def kl_divergence(p, q, num_topics):
