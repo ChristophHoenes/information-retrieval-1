@@ -2,3 +2,20 @@
 
 assignment1/datasets*
 assignment1/.ipynb_checkpoints*
+
+assignment2/venv*
+assignment2/datasets*
+assignment2/.idea*
+assignment2/__pycache__
+assignment2/processed_docs*
+assignment2/tf-idf.json
+assignment2/tfidf_index
+assignment2/.ipynb_checkpoints*
+
+assignment2/models*
+assignment2/results/LDA10.dat
+assignment2/results/LDA100.dat
+assignment2/results/LDA50.dat
+assignment2/results/LDA500.dat
+assignment2/results/TF-IDF.dat
+assignment2/results/LDA1000.dat
