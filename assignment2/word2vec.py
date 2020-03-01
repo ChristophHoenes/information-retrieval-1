@@ -188,17 +188,22 @@ class W2v:
         return results
 
     def get_word_vec(self, word):
-        return self.embedding(torch.tensor(self.word2idx[word], dtype=torch.long))
+        if word in self.word2idx:
+            return self.embedding(torch.tensor(self.word2idx[word], dtype=torch.long))
+        else:
+            # if word is not in vocab, use index for unknown words (0)
+            return self.embedding(torch.tensor(0, dtype=torch.long))
 
     def get_doc_vec(self, doc, agg_mode=torch.mean):
         wvs = torch.zeros(len(doc), self.embedding_dim)
         for i, token in enumerate(doc):
             wvs[i] = self.get_word_vec(token)
         doc_vec = agg_mode(wvs, dim=0)
-        print(doc_vec.shape)
+        #print(doc_vec.shape)
         return doc_vec
 
     def get_doc_vecs(self, docs):
+        self.docs = docs
         print('getting vectors')
         doc_vecs_list = []
         idx2docid = {}
@@ -241,11 +246,12 @@ if __name__ == "__main__":
     window_size = 5
     embedding_dim = 300
     docs_by_id = read_ap.get_processed_docs()
+
     # uncomment the following to train doc2vec
     #w2v = W2v(window_size, docs_by_id, embedding_dim)
     #w2v.train_nn(embedding_dim, window_size)
     #print('done training')
-    w2v = W2v(window_size, embedding_dim)
+    w2v = W2v(window_size, embedding_dim=embedding_dim)
     #uncomment the following to get k most similar words (word must be stemmed)
     #word = 'green'
     #k = 10
@@ -255,11 +261,10 @@ if __name__ == "__main__":
     # get queries
     qrels, queries = read_ap.read_qrels()
     overall_ser = {}
-    d2v = w2v = W2v(window_size, embedding_dim)
-    d2v.get_doc_vecs(docs_by_id)
+    w2v.get_doc_vecs(docs_by_id)
     for qid in tqdm(qrels):
         query_text = queries[qid]
-        results = d2v.search(query_text)
+        results = w2v.search(query_text)
         overall_ser[qid] = dict(results)
     with open("w2v_ranking.json", "w") as writer:
         json.dump(overall_ser, writer, indent=1)
