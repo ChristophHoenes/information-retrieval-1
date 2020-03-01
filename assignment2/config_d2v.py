@@ -59,9 +59,9 @@ for vocab_size in vocab_sizes:
     with open("d2v_vocabsize_"+str(vocab_size)+".json", "w") as writer:
         json.dump(overall_ser, writer, indent=1)
 """
-wind_size = 5
-vec_dim = 400
-vocab = 2
+wind_size = 15
+vec_dim = 200
+vocab = 50
 overall_ser = {}
 d2v = Doc2Vec(docs_by_id, wind_size, vec_dim, vocab)
 d2v.get_doc_vecs(docs_by_id)
@@ -69,5 +69,5 @@ for qid in tqdm(qrels):
     query_text = queries[qid]
     results = d2v.search(query_text)
     overall_ser[qid] = dict(results)
-with open("d2v_bestvalid_"+str(wind_size)+".json", "w") as writer:
+with open("d2v_vecdim_"+str(vec_dim)+".json", "w") as writer:
     json.dump(overall_ser, writer, indent=1)

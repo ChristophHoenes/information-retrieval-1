@@ -8,13 +8,15 @@ import read_ap
 import random
 import download_ap
 import numpy as np
+import json
 
 
 
 class W2v:
-    def __init__(self, wind_size, docs=None):
+    def __init__(self, wind_size, docs=None, embedding_dim=300):
         if docs == None:
             self.load_embedding(wind_size)
+            self.embedding_dim = embedding_dim
         else:
             self.doc_ids = docs.keys()
             self.docs = docs
@@ -66,6 +68,7 @@ class W2v:
             self.idx2word[0] = '<unk>'
             self.vocab = self.word2idx.keys()
             self.embedding = None
+            self.embedding_dim = embedding_dim
 
     def load_embedding(self, wind_size):
         weights = torch.tensor(np.load('./w2v_weights_'+str(wind_size)+'.npy', allow_pickle=True))
@@ -187,6 +190,40 @@ class W2v:
     def get_word_vec(self, word):
         return self.embedding(torch.tensor(self.word2idx[word], dtype=torch.long))
 
+    def get_doc_vec(self, doc, agg_mode=torch.mean):
+        wvs = torch.zeros(len(doc), self.embedding_dim)
+        for i, token in enumerate(doc):
+            wvs[i] = self.get_word_vec(token)
+        doc_vec = agg_mode(wvs, dim=0)
+        print(doc_vec.shape)
+        return doc_vec
+
+    def get_doc_vecs(self, docs):
+        print('getting vectors')
+        doc_vecs_list = []
+        idx2docid = {}
+        for i, doc_id in enumerate(tqdm(self.docs)):
+            doc_vecs_list.append(self.get_doc_vec(self.docs[doc_id]))
+            idx2docid[i] = doc_id
+        doc_vecs = torch.stack(doc_vecs_list, dim=1)
+        print(doc_vecs.shape)
+        self.doc_vecs = doc_vecs
+        self.idx2docid = idx2docid
+
+    def search(self, query):
+        if self.doc_vecs == None:
+            raise Exception('Forgot to call get_doc_vecs() before ranking.')
+        query_repr = read_ap.process_text(query)
+        orig = self.get_doc_vec(query_repr)
+        orig = orig.unsqueeze(1).repeat(1, len(self.docs))
+        cos = nn.CosineSimilarity(dim=0, eps=1e-6)
+        prod = cos(orig, self.doc_vecs)
+        print('sorting results')
+        indices = (-prod.numpy()).argsort()
+        results = [(self.idx2docid[index], float(prod.numpy()[index])) for index in indices]
+        return results
+
+
 if __name__ == "__main__":
     # ensure dataset is downloaded
     download_ap.download_dataset()
@@ -205,7 +242,7 @@ if __name__ == "__main__":
     embedding_dim = 300
     docs_by_id = read_ap.get_processed_docs()
     #print('done')
-    w2v = W2v(window_size, docs_by_id)
+    w2v = W2v(window_size, docs_by_id, embedding_dim)
     w2v.train_nn(embedding_dim, window_size)
     print('done training')
     #w2v = W2v(window_size)
@@ -215,3 +252,15 @@ if __name__ == "__main__":
     #k = 10
     #similar = w2v.most_similar(word, k)
     #print(similar)
+
+    # get queries
+    qrels, queries = read_ap.read_qrels()
+    overall_ser = {}
+    d2v = w2v = W2v(window_size, embedding_dim)
+    d2v.get_doc_vecs(docs_by_id)
+    for qid in tqdm(qrels):
+        query_text = queries[qid]
+        results = d2v.search(query_text)
+        overall_ser[qid] = dict(results)
+    with open("d2v_vecdim_" + str(vec_dim) + ".json", "w") as writer:
+        json.dump(overall_ser, writer, indent=1)
