@@ -17,7 +17,7 @@ from gensim.corpora import Dictionary
 import logging
 
 class LSI():
-    def __init__(self, docs, num_topics=500, chunksize=2000, no_below=50, no_above=0.5,
+    def __init__(self, docs, num_topics=500, chunksize=20000, no_below=50, no_above=0.5,
                  tfidf=True, model_path="./lsi_data"):
         # Set training parameters.
         self.num_topics = num_topics
@@ -97,7 +97,7 @@ class LSI():
         index_path = os.path.join(self.model_path, 'lsi_index_rank.index')
         if first_query:  # and not os.path.exists(os.path.join(self.model_path, 'lsi_index_rank.index')):
             used_corpus = self.corpus_tfidf if self.tfidf else self.corpus_bow
-            index = similarities.Similarity(os.path.join(self.model_path,"shard"), self.model[used_corpus], len(self.index))  # transform corpus to LSI space and index it
+            index = similarities.Similarity(os.path.join(self.model_path,"shard"), self.model[used_corpus], self.num_topics)  #len(self.index))  # transform corpus to LSI space and index it
             index.save(index_path)
         else:
             index = similarities.Similarity.load(index_path)
@@ -229,7 +229,7 @@ if __name__ == "__main__":
             lsi.train()
             tfidf_tag = "tfidf" if tfidf else "bow"
             eval_path = os.path.join(lsi.model_path, "lsi_" + tfidf_tag + str(t))
-            print(tfidf_tag)
+            print("Lsi"+tfidf_tag+str(t))
             evaluate_model(lsi, qrels, queries, eval_path+".json",
                            eval_path+".trec", "Lsi"+tfidf_tag+str(t))
 
