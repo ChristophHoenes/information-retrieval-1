@@ -68,7 +68,7 @@ class W2v:
             self.embedding = None
 
     def load_embedding(self, wind_size):
-        weights = torch.tensor(np.load('./w2v_weights_'+str(wind_size)+'.npy'))
+        weights = torch.tensor(np.load('./w2v_weights_'+str(wind_size)+'.npy', allow_pickle=True))
         self.embedding = nn.Embedding.from_pretrained(weights)
         with open('./word2idx_'+str(wind_size)+'.pickle', 'rb') as pickle_file:
             self.word2idx = pkl.load(pickle_file)
@@ -125,22 +125,22 @@ class W2v:
 
 
     def train_nn(self, embedding_dim, wind_size):
-        iterations = 100000
+        iterations = 200000
 
-        l1 = nn.Embedding(len(self.vocab), embedding_dim, sparse=True)
-        l2 = nn.Embedding(len(self.vocab), embedding_dim, sparse=True)
+        l1 = nn.Embedding(len(self.vocab), embedding_dim, sparse=True).cuda()
+        l2 = nn.Embedding(len(self.vocab), embedding_dim, sparse=True).cuda()
         params = list(l1.parameters()) + list(l2.parameters())
         lr = 0.001
-        batch_size = 1000
+        batch_size = 1024
         optimizer = torch.optim.SparseAdam(params, lr=lr)
         criterion = nn.BCELoss()
 
         for i in range(iterations):
             optimizer.zero_grad()
             pairs = self.get_pairs(batch_size, wind_size)
-            center = torch.tensor(pairs[:, 0]).long()
-            context = torch.tensor(pairs[:, 1]).long()
-            labels = torch.tensor(pairs[:, 2]).float()
+            center = torch.tensor(pairs[:, 0]).long().cuda()
+            context = torch.tensor(pairs[:, 1]).long().cuda()
+            labels = torch.tensor(pairs[:, 2]).float().cuda()
 
             #input_center = torch.zeros(batch_size, len(self.vocab))
             #input_context = torch.zeros(batch_size, len(self.vocab))
@@ -164,7 +164,8 @@ class W2v:
 
             if i%100 == 0:
                 print("Iteration {}: {}".format(i, loss))
-        wvs = l1.weight.data.numpy()
+        wvs = l1.weight.data.cpu().numpy()
+        #print(wvs)
         np.save('./w2v_weights_'+str(wind_size)+'.npy', wvs)
         with open('./word2idx_'+str(wind_size)+'.pickle', 'wb') as pickle_file:
             pkl.dump(self.word2idx, pickle_file)
@@ -201,15 +202,16 @@ if __name__ == "__main__":
             pkl.dump(docs_by_id, writer)
     """
     window_size = 15
-    embedding_dim = 100
-    #docs_by_id = read_ap.get_processed_docs()
+    embedding_dim = 300
+    docs_by_id = read_ap.get_processed_docs()
     #print('done')
-    #w2v = W2v(window_size, docs_by_id)
-    #w2v.train_nn(embedding_dim, window_size)
-    w2v = W2v(window_size)
+    w2v = W2v(window_size, docs_by_id)
+    w2v.train_nn(embedding_dim, window_size)
+    print('done training')
+    #w2v = W2v(window_size)
     #embedding = load_embedding()
     #print(weights.shape)
-    word = 'dog'
-    k = 10
-    similar = w2v.most_similar(word, k)
-    print(similar)
+    #word = 'dog'
+    #k = 10
+    #similar = w2v.most_similar(word, k)
+    #print(similar)
