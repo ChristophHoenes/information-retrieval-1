@@ -93,4 +93,4 @@ if __name__ == '__main__':
     input = 'w2v_ranking.json'
     file = 'w2v.json'
     trec_name = 'w2v.trec'
-    run_evaluation(input, file, trec_name, '300_5_200k')
+    run_evaluation(input, file, trec_name, '300_5_25k')
