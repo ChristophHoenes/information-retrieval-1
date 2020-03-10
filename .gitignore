@@ -19,3 +19,6 @@ assignment2/results/LDA50.dat
 assignment2/results/LDA500.dat
 assignment2/results/TF-IDF.dat
 assignment2/results/LDA1000.dat
+
+assignment3/venv*
+assignment3/dataset*
