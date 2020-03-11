@@ -382,6 +382,50 @@ def download_dataset():
         # unzip file
         with zipfile.ZipFile(file_location, 'r') as zip_ref:
             zip_ref.extractall(folder_path)
+            
+class DataClass(object):
+    def __init__(self, featvecs, labels):
+
+        self._num_examples = featvecs.shape[0]
+        self._featvecs = featvecs
+        self._labels = labels
+        self._epochs_completed = 0
+        self._index_in_epoch = 0
+
+    @property
+    def featvecs(self):
+        return self._featvecs
+
+    @property
+    def labels(self):
+        return self._labels
+
+    @property
+    def num_examples(self):
+        return self._num_examples
+
+    @property
+    def epochs_completed(self):
+        return self._epochs_completed
+
+    def next_batch(self, batch_size):
+
+        start = self._index_in_epoch
+        self._index_in_epoch += batch_size
+        if self._index_in_epoch > self._num_examples:
+            self._epochs_completed += 1
+            
+            perm = np.arange(self._num_examples)
+            np.random.shuffle(perm)
+            self._featvecs = self._featvecs[perm]
+            self._labels = self._labels[perm]
+
+            start = 0
+            self._index_in_epoch = batch_size
+            assert batch_size <= self._num_examples
+
+        end = self._index_in_epoch
+        return self._featvecs[start:end], self._labels[start:end]
 
 
 if __name__ == "__main__":
