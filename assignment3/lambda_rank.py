@@ -3,7 +3,7 @@ import ranking as rnk
 import evaluate as evl
 import numpy as np
 import torch
-from dataset import Dataclass
+
 from collections import OrderedDict
 from torch import nn
 
@@ -30,22 +30,32 @@ def delta_err(ranking, i, j):
     return derr
 
 class LambdaRank:
-    def __init__(self, num_layers, hidden_dims):
+    def __init__(self, num_layers, hidden_dims, input_size):
         layers = OrderedDict()
-        for i in range(num_layers):
-            layers.update(('layer'+str(i), nn.Linear(len(input), hidden_dims[i])))
-            layers.update(('relu'+str(i), nn.ReLU()))
+        layers['layer0'] = nn.Linear(input_size, hidden_dims[0])
+        layers['relu0'] = nn.ReLU()
+        in_dim = hidden_dims[0]
+        for i in range(1, len(hidden_dims)):
+            layers['layer' + str(i)] = nn.Linear(in_dim, hidden_dims[i])
+            layers['relu'+str(i)] = nn.ReLU()
+            in_dim = hidden_dims[i]
         self.model = nn.Sequential(layers)
 
-    def train(self):
+    def train(self, data):
         lr = 0.001
-        data = dataset.get_dataset().get_data_folds()[0]
-        data.read_data()
-        print(data)
+        num_epochs = 10
+        batch_size = 100
+        dataclass = dataset.DataClass(data.train.feature_matrix, data.train.label_vector)
+        print(data.train.feature_matrix.shape)
+        for i in range(num_epochs):
+            input = dataclass.next_batch(100)
+            self.model(input)
 
 
 
 
 if __name__ == '__main__':
-    model = LambdaRank(3, 100)
-    model.train()
+    data = dataset.get_dataset().get_data_folds()[0]
+    data.read_data()
+    model = LambdaRank(3, [100, 200], input_size=data.num_features)
+    model.train(data)
