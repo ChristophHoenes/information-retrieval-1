@@ -20,6 +20,7 @@ random_model = np.random.uniform(size=data.num_features)
 
 # one score for every document (1d vector in ordering of the dataset)
 all_scores = np.dot(data.train.feature_matrix, random_model)
+print(all_scores.shape)
 
 # rank every query for all scores (1d vector ordered by query ordering in dataset)
 all_rankings, all_inverted_rankings = rnk.data_split_rank_and_invert(all_scores, data.train)
