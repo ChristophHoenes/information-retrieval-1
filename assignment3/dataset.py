@@ -8,6 +8,8 @@ import requests
 import numpy as np
 from tqdm import tqdm
 
+import torch
+
 
 FOLDDATA_WRITE_VERSION = 4
 
@@ -384,11 +386,19 @@ def download_dataset():
             zip_ref.extractall(folder_path)
             
 class DataClass(object):
-    def __init__(self, featvecs, labels):
+    def __init__(self, featvecs, labels, shuffle=False):
+        
 
+        
         self._num_examples = featvecs.shape[0]
-        self._featvecs = featvecs
-        self._labels = labels
+        self._featvecs = torch.from_numpy(featvecs).float()
+        self._labels = torch.from_numpy(labels).float()
+        if shuffle:
+            perm = np.arange(self._num_examples)
+            np.random.shuffle(perm)
+            self._featvecs = self._featvecs[perm]
+            self._labels = self._labels[perm]
+            
         self._epochs_completed = 0
         self._index_in_epoch = 0
 
@@ -425,7 +435,7 @@ class DataClass(object):
             assert batch_size <= self._num_examples
 
         end = self._index_in_epoch
-        return self._featvecs[start:end], self._labels[start:end]
+        return self._featvecs[start:end], self._labels[start:end].view(-1,1)
 
 
 if __name__ == "__main__":
