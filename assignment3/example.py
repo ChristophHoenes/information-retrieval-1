@@ -14,6 +14,7 @@ print('Number of queries in validation set: %d' % data.validation.num_queries())
 print('Number of documents in validation set: %d' % data.validation.num_docs())
 print('Number of queries in test set: %d' % data.test.num_queries())
 print('Number of documents in test set: %d' % data.test.num_docs())
+print('Feature matrix size: {}'.format(data.train.feature_matrix.shape))
 
 # initialize a random model
 random_model = np.random.uniform(size=data.num_features)
