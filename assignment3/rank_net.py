@@ -13,7 +13,7 @@ import pickle
 
 
 class Rank_Net(nn.Module):
-    def __init__(self, d_in, num_neurons=[100, 50, 1], sigma=1.0, dropout=0.0, device='cpu'):
+    def __init__(self, d_in, num_neurons=[200, 100, 50, 1], sigma=1.0, dropout=0.0, device='cpu'):
         assert isinstance(num_neurons, list) or isinstance(num_neurons, int), "num_neurons must be either an int (one layer) or a list of ints"
         if isinstance(num_neurons, int):
             num_neurons = [num_neurons]
@@ -31,12 +31,13 @@ class Rank_Net(nn.Module):
             layers.append(nn.Linear(h, h_next))
             layers.append(nn.Dropout(self.dropout))
             layers.append(nn.ReLU())
-        layers.pop()
-        layers.append(nn.ReLU6())
+        #layers.pop()
+        #layers.append(nn.ReLU6())
+        #layers.append(nn.Sigmoid())
         self.layers = nn.Sequential(*layers)
 
     def forward(self, x):
-        x = torch.from_numpy(x).float().to(self.device)
+        x = torch.Tensor(x).to(self.device)
         self.layers.to(self.device)
         return self.layers(x)
 
@@ -57,7 +58,7 @@ class Rank_Net(nn.Module):
             for b, (batch_data, batch_labels) in enumerate(batches):
                 if converged:
                     break
-                batch_scores = self.forward(batch_data)
+                batch_scores = self.layers(batch_data)
                 loss = 0.0
                 for qid in tqdm(range(len(batch_labels))):
                     query_scores = batch_scores[qid]
@@ -78,7 +79,7 @@ class Rank_Net(nn.Module):
                         print('Average Loss: {} for batch {} of {} batches'.format(loss, b, len(batches)))
                         with torch.no_grad():
                             self.layers.eval()
-                            validation_scores = torch.round(self.forward(data.validation.feature_matrix))
+                            validation_scores = torch.argmax(self.layers(data.validation.feature_matrix),dim=1)
                         ndcg_result = evl.ndcg_at_k(validation_scores.numpy(), data.validation.label_vector, 0)
                         print('NDCG score at batch {}: {}'.format(b, ndcg_result))
                         if ndcg_result > ndcg_convergence:
@@ -102,16 +103,16 @@ class Rank_Net(nn.Module):
             offset = 0
             for b in range(num_batches):
                 start = time()
-                all_scores = self.forward(data.train.feature_matrix)
+                all_scores = self.layers(data.train.feature_matrix)
                 end = time()
                 print('Full trainset forward pass in {} seconds'.format(end - start))
                 if b == 0:
                     start = time()
-                    _ = self.forward(data.train.feature_matrix[0:1000])
+                    _ = self.layers(data.train.feature_matrix[0:1000])
                     end = time()
                     print('1000 trainset examples forward pass in {} seconds'.format(end - start))
                     start = time()
-                    _ = self.forward(data.train.feature_matrix[0:500])
+                    _ = self.layers(data.train.feature_matrix[0:500])
                     end = time()
                     print('500 trainset examples forward pass in {} seconds'.format(end-start))
                 loss = 0.0
@@ -137,7 +138,7 @@ class Rank_Net(nn.Module):
                     print('Average Loss: {} for batch {} of {} batches'.format(loss, b, num_batches))
                     with torch.no_grad():
                         self.layers.eval()
-                        validation_scores = torch.round(self.forward(data.validation.feature_matrix))
+                        validation_scores = torch.round(self.layers(data.validation.feature_matrix))
                     ndcg_result = evl.ndcg_at_k(validation_scores.numpy(), data.validation.label_vector, 0)
                     print('NDCG score at batch {}: {}'.format(b, ndcg_result))
                     if ndcg_result > ndcg_convergence:
@@ -159,7 +160,7 @@ class Rank_Net(nn.Module):
             np.random.shuffle(random_query_order)
             num_batches = int(np.ceil(num_queries/batch_size))
             offset = 0
-            all_scores = self.forward(data.train.feature_matrix)
+            all_scores = self.layers(data.train.feature_matrix)
             for b in range(num_batches):
                 loss = torch.tensor(0.0)
                 for qid in tqdm(range(offset,batch_size+offset)):
@@ -187,7 +188,7 @@ class Rank_Net(nn.Module):
                     print('Average Loss: {} for batch {} of {} batches'.format(loss, b, num_batches))
                     with torch.no_grad():
                         self.layers.eval()
-                        validation_scores = torch.round(self.forward(data.validation.feature_matrix))
+                        validation_scores = torch.round(self.layers(data.validation.feature_matrix))
                     ndcg_result = evl.ndcg_at_k(validation_scores.numpy(), data.validation.label_vector, 0)
                     print('NDCG score at batch {}: {}'.format(b, ndcg_result))
                     if ndcg_result > ndcg_convergence:
@@ -210,7 +211,7 @@ class Rank_Net(nn.Module):
             for qid in tqdm(range(num_queries)):
                 loss = 0.0
                 s_i, e_i = data.train.query_range(random_query_order[qid])
-                query_scores = self.forward(data.train.feature_matrix[s_i:e_i])
+                query_scores = self.layers(data.train.feature_matrix[s_i:e_i])
                 query_labels = data.train.query_labels(random_query_order[qid])
                 for i in range(len(query_scores)):
                     for j in range(len(query_scores)):
@@ -229,7 +230,7 @@ class Rank_Net(nn.Module):
                         print('Average Loss epoch {}: {} after query {} of {} queries'.format(e, loss.item(), qid, num_queries))
                         with torch.no_grad():
                             self.layers.eval()
-                            validation_scores = torch.round(self.forward(data.validation.feature_matrix))
+                            validation_scores = torch.round(self.layers(data.validation.feature_matrix))
                         ndcg_result = evl.ndcg_at_k(validation_scores.numpy(), data.validation.label_vector, 0)
                         print('NDCG score: {}'.format(ndcg_result))
                         if ndcg_result > ndcg_convergence:
@@ -251,7 +252,7 @@ class Rank_Net(nn.Module):
             np.random.shuffle(random_query_order)
             for qid in tqdm(range(num_queries)):
                 s_i, e_i = data.train.query_range(random_query_order[qid])
-                query_scores = self.forward(data.train.feature_matrix[s_i:e_i])
+                query_scores = self.layers(data.train.feature_matrix[s_i:e_i])
                 query_labels = data.train.query_labels(random_query_order[qid])
 
                 # to catch cases with less than two documents (as no loss can be computed if there is no document pair)
@@ -278,7 +279,7 @@ class Rank_Net(nn.Module):
                         print('Average Loss epoch {}: {} after query {} of {} queries'.format(e, loss.item(), qid, num_queries))
                         with torch.no_grad():
                             self.layers.eval()
-                            validation_scores = torch.round(self.forward(data.validation.feature_matrix))
+                            validation_scores = torch.round(self.layers(data.validation.feature_matrix))
                         ndcg_result = evl.ndcg_at_k(validation_scores.numpy(), data.validation.label_vector, 0)
                         print('NDCG score: {}'.format(ndcg_result))
                         if ndcg_result > ndcg_convergence:
@@ -298,7 +299,7 @@ class Rank_Net(nn.Module):
                 break
             #random_query_order = np.arange(num_queries)
             #np.random.shuffle(random_query_order)
-            all_scores = self.forward(data.train.feature_matrix)
+            all_scores = self.layers(data.train.feature_matrix)
             all_loss = 0
             for qid in tqdm(range(num_queries)):
                 s_i, e_i = data.train.query_range(qid)#random_query_order[qid])
@@ -327,7 +328,7 @@ class Rank_Net(nn.Module):
                         print('Average Loss epoch {}: {} after query {} of {} queries'.format(e, loss.item(), qid, num_queries))
                         with torch.no_grad():
                             self.layers.eval()
-                            validation_scores = torch.round(self.forward(data.validation.feature_matrix))
+                            validation_scores = torch.round(self.layers(data.validation.feature_matrix))
                         ndcg_result = evl.ndcg_at_k(validation_scores.numpy(), data.validation.label_vector, 0)
                         print('NDCG score: {}'.format(ndcg_result))
                         if ndcg_result > ndcg_convergence:
@@ -353,7 +354,7 @@ class Rank_Net(nn.Module):
             random_query_order = np.arange(num_queries)
             np.random.shuffle(random_query_order)
             #num_batches = num_queries/batch_size + (1 if num_queries % batch_size > 0 else 0)
-            all_scores = self.forward(data.train.feature_matrix)
+            all_scores = self.layers(data.train.feature_matrix)
             all_loss = 0
             completed_batches = 0
             for qid in tqdm(range(num_queries)):
@@ -390,7 +391,7 @@ class Rank_Net(nn.Module):
                             print('Average Loss epoch {}: {} after query {} of {} queries'.format(e, loss.item(), qid, num_queries))
                             with torch.no_grad():
                                 self.layers.eval()
-                                validation_scores = torch.round(self.forward(data.validation.feature_matrix))
+                                validation_scores = torch.round(self.layers(data.validation.feature_matrix))
                             ndcg_result = evl.ndcg_at_k(validation_scores.numpy(), data.validation.label_vector, 0)
                             print('NDCG score: {}'.format(ndcg_result))
                             if ndcg_result > ndcg_convergence:
@@ -416,7 +417,8 @@ class Rank_Net(nn.Module):
             completed_batches = 0
             for qid in tqdm(range(num_queries)):
                 #s_i, e_i = data.train.query_range(random_query_order[qid])
-                query_scores = self.forward(data.train.query_feat(random_query_order[qid]))
+                x = torch.Tensor(data.train.query_feat(random_query_order[qid])).to(self.device)
+                query_scores = self.layers(x)
                 #query_scores = all_scores[s_i:e_i]
                 query_labels = data.train.query_labels(random_query_order[qid])
 
@@ -424,16 +426,10 @@ class Rank_Net(nn.Module):
                 if len(query_labels) < 2:
                     continue
 
-                score_combs = list(zip(*combinations(query_scores, 2)))
-                score_combs_i = torch.stack(score_combs[0]).squeeze()
-                score_combs_j = torch.stack(score_combs[1]).squeeze()
+                score_combs_i, score_combs_j, label_combs_i, label_combs_j = self.create_valid_pairs(query_scores, query_labels)
 
-                label_combs = np.array(list(combinations(query_labels, 2)))
-                label_combs_i = torch.from_numpy(label_combs[:, 0])
-                label_combs_j = torch.from_numpy(label_combs[:, 1])
-
-                loss = self.pair_cross_entropy_vectorized(score_combs_i, score_combs_j,
-                                                          label_combs_i, label_combs_j)
+                loss = self.rank_net_loss(score_combs_i, score_combs_j,
+                                          label_combs_i, label_combs_j)
 
                 all_loss += loss
 
@@ -441,7 +437,7 @@ class Rank_Net(nn.Module):
                     completed_batches += 1
                     all_loss /= (batch_size if qid % batch_size == 0 else num_queries % batch_size)
                     optimizer.zero_grad()
-                    loss.backward()
+                    self.calculate_gradients(loss, query_scores)
                     optimizer.step()
 
                     if eval_freq != 0:
@@ -449,7 +445,8 @@ class Rank_Net(nn.Module):
                             print('Average Loss epoch {}: {} after query {} of {} queries'.format(e, loss.item(), qid, num_queries))
                             with torch.no_grad():
                                 self.layers.eval()
-                                validation_scores = torch.round(self.forward(data.validation.feature_matrix))
+                                x = torch.Tensor(data.validation.feature_matrix).to(self.device)
+                                validation_scores = torch.round(self.layers(x))
                             ndcg_result = evl.ndcg_at_k(validation_scores.numpy(), data.validation.label_vector, 0)
                             print('NDCG score: {}'.format(ndcg_result))
                             if ndcg_result > ndcg_convergence:
@@ -460,6 +457,26 @@ class Rank_Net(nn.Module):
         if not converged:
             print('Done training for {} epochs'.format(num_epochs))
 
+    def calculate_gradients(self, loss, model_output):
+        loss.backward()
+
+    def rank_net_loss(self, s_i, s_j, S_i, S_j):
+        S_diff = S_i - S_j
+        Sij = np.where(S_diff > 0, 1.0, -1.0)
+        Sij = torch.from_numpy(np.where(S_diff == 0, 0.0, Sij))
+        sig_diff = self.sigma * (s_i - s_j)
+        return torch.sum(0.5 * (1 - Sij) * sig_diff + torch.log(1 + torch.exp(-sig_diff)))
+
+    def create_valid_pairs(self, query_scores, query_labels):
+        score_combs = list(zip(*combinations(query_scores, 2)))
+        score_combs_i = torch.stack(score_combs[0]).squeeze()
+        score_combs_j = torch.stack(score_combs[1]).squeeze()
+
+        label_combs = np.array(list(combinations(query_labels, 2)))
+        label_combs_i = torch.from_numpy(label_combs[:, 0])
+        label_combs_j = torch.from_numpy(label_combs[:, 1])
+        return score_combs_i, score_combs_j, label_combs_i, label_combs_j
+
     def train_gd(self, data, lr=1e-3, batch_size=1, num_epochs=1, ndcg_convergence=0.95, eval_freq=1):
         self.layers.train()
         optimizer = torch.optim.Adam(self.layers.parameters(), lr=lr)
@@ -468,7 +485,7 @@ class Rank_Net(nn.Module):
         for e in range(num_epochs):
             if converged:
                 break
-            all_scores = self.forward(data.train.feature_matrix)
+            all_scores = self.layers(data.train.feature_matrix)
             loss = []
             for qid in tqdm(range(num_queries)):
                 s_i, e_i = data.train.query_range(qid)
@@ -491,7 +508,7 @@ class Rank_Net(nn.Module):
                     print('Average Loss per query: {} in epoch {}'.format(loss, e))
                     with torch.no_grad():
                         self.layers.eval()
-                        validation_scores = torch.round(self.forward(data.validation.feature_matrix))
+                        validation_scores = torch.round(self.layers(data.validation.feature_matrix))
                     ndcg_result = evl.ndcg_at_k(validation_scores.numpy(), data.validation.label_vector, 0)
                     print('NDCG score at epoch {}: {}'.format(e, ndcg_result))
                     if ndcg_result > ndcg_convergence:
@@ -516,7 +533,8 @@ class Rank_Net(nn.Module):
     def evaluate(self, data_fold, print_results=False):
         self.layers.eval()
         with torch.no_grad():
-            validation_scores = torch.round(self.forward(data_fold.feature_matrix)).squeeze().numpy()
+            x = torch.Tensor(data_fold.feature_matrix).to(self.device)
+            validation_scores = torch.round(self.layers(x)).squeeze().numpy()
         results = evl.evaluate(data_fold, validation_scores, print_results=print_results)
         return results
 
@@ -547,6 +565,30 @@ class Rank_Net(nn.Module):
             offset += batch_size
         return batches#, query_sizes
 
+class Rank_Net_Sped_Up(Rank_Net):
+
+    def rank_net_loss(self, s_i, s_j, S_i, S_j):
+        S_diff = S_i - S_j
+        Sij = np.where(S_diff > 0, 1.0, -1.0)
+        Sij = torch.from_numpy(np.where(S_diff == 0, 0.0, Sij))
+        sig_diff = self.sigma * (s_i - s_j)
+        return torch.sum(self.sigma * (0.5 * (1 - Sij) - 1/(1 + torch.exp(sig_diff))))
+
+    def calculate_gradients(self, lambdas, model_output):
+        model_output.backward(lambdas)
+
+    def create_valid_pairs(self, query_scores, query_labels):
+        score_combs = list(zip(*combinations(query_scores.detach(), 2)))
+        score_combs_i = torch.stack(score_combs[0]).squeeze()
+        score_combs_j = torch.stack(score_combs[1]).squeeze()
+
+        label_combs = np.array(list(combinations(query_labels, 2)))
+        label_combs_i = torch.from_numpy(label_combs[:, 0])
+        label_combs_j = torch.from_numpy(label_combs[:, 1])
+        return score_combs_i, score_combs_j, label_combs_i, label_combs_j
+
+
+
 def r(g, g_max=4):
     return (2**g-1 / 2**g_max)
 
@@ -564,14 +606,24 @@ if __name__ == "__main__":
     data = dataset.get_dataset().get_data_folds()[0]
     data.read_data()
 
-    net2 = Rank_Net(data.num_features)
+    # net = Rank_Net(data.num_features, sigma=2.0)
+    # start = time()
+    # net.train_sgd_speed4(data, num_epochs=5)
+    # end = time()
+    # print('Finished training in {} minutes'.format((end-start)/60))
+    # net.save(path='./rank_net'+str(net.model_id)+'.weights')
+    # final_test_results = net.evaluate(data.test,print_results=True)
+    # with open('eval'+str(net.model_id), 'wb') as f:
+    #     pickle.dump(final_test_results, f)
+
+    net2 = Rank_Net_Sped_Up(data.num_features, sigma=.1)
     start = time()
-    net2.train_sgd_speed3(data, num_epochs=5)
+    net2.train_sgd_speed4(data, num_epochs=5)
     end = time()
-    print('Finished training in {} minutes'.format((end-start)/60))
-    net2.save(path='./rank_net'+str(net2.model_id)+'.weights')
-    final_test_results = net2.evaluate(data.test,print_results=True)
-    with open('eval'+str(net2.model_id), 'wb') as f:
+    print('Finished training in {} minutes'.format((end - start) / 60))
+    net2.save(path='./rank_net' + str(net2.model_id) + '.weights')
+    final_test_results = net2.evaluate(data.test, print_results=True)
+    with open('eval' + str(net2.model_id), 'wb') as f:
         pickle.dump(final_test_results, f)
 
     # net = Rank_Net(data.num_features)
