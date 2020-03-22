@@ -118,7 +118,8 @@ def evaluate(data_split, all_scores, print_results=False):
     if included(qid, data_split):
       add_to_results(results, evaluate_query(data_split, qid, all_scores))
 
-  #print('"metric": "mean" ("standard deviation")')
+  if print_results:
+    print('"metric": "mean" ("standard deviation")')
   mean_results = {}
   for k in sorted(results.keys()):
     v = results[k]
