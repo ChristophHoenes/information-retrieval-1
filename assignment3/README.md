@@ -2,7 +2,7 @@
 This is the readme for the third homework assignment.
 ### Pointwise ###
 To train a pointwise model, run `train_pointwise.py`, e.g.:
-<pre><code>python train_pointwise.py --learning_rate=5e-4 --n_hiddens=200,200 --max_steps=3000 --eval_freq=30 --batch_size=1000</code></pre>.
+<pre><code>python train_pointwise.py --learning_rate=5e-4 --n_hiddens=200,200 --max_steps=3000 --eval_freq=30 --batch_size=1000</code></pre>
 Results are written to folder `results`. The results include losses over training, for both training and validation, and NDCG over training, and final test performance of the model.
 
 ### RankNet ###
