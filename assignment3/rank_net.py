@@ -118,7 +118,7 @@ class Rank_Net(nn.Module):
         ideal_labels = np.sort(labels)[::-1]
         return sorted_labels, ideal_labels
 
-    def train_sgd_speed5(self, data, lr=5e-5, num_epochs=1, ndcg_convergence=0.95, eval_freq=1000):
+    def train_sgd_speed5(self, data, lr=1e-5, num_epochs=1, ndcg_convergence=0.95, eval_freq=1000):
         self.layers.train()
         optimizer = torch.optim.Adam(self.layers.parameters(), lr=lr)
         num_queries = data.train.num_queries()
@@ -346,7 +346,7 @@ class Rank_Net_Sped_Up(Rank_Net):
         return score_combs_i, score_combs_j, label_combs_i, label_combs_j
 
 def hyperparameter_search():
-    lrs = [1e-5, 1e-3, 1e-4]
+    lrs = [1e-5, 2e-3, 1e-4, 1e-6]
     hidden_layers = [[200], [200, 100], [200,100,50]]
     irms = ['ndcg']
     sigmas = [0.5, 1.0, 2.0]
@@ -394,7 +394,7 @@ if __name__ == "__main__":
     #hyperparameter_search()
     net = Rank_Net(data.num_features, sigma=1.0)
     start = time()
-    net.train_sgd_speed4(data, num_epochs=1)
+    net.train_sgd_speed5(data, num_epochs=1)
     end = time()
     print('Finished training in {} minutes'.format((end-start)/60))
     net.save(path='./rank_net'+str(net.model_id)+'.weights')
