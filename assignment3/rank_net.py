@@ -78,7 +78,7 @@ class Rank_Net(nn.Module):
                                                             label_combs_i, label_combs_j)
 
                 all_loss += loss
-                losses.append(loss.item())
+                losses.append(loss.item()/(batch_size if qid % batch_size == 0 else num_queries % batch_size))
 
                 if qid % batch_size == 0 or qid == num_queries-1:
                     all_loss /= (batch_size if qid % batch_size == 0 else num_queries % batch_size)
