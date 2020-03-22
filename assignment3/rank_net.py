@@ -31,7 +31,7 @@ class Rank_Net(nn.Module):
         layers = []
         for h, h_next in zip(num_neurons, num_neurons[1:]):
             layers.append(nn.Linear(h, h_next))
-            layers.append(nn.Dropout(self.dropout))
+            #layers.append(nn.Dropout(self.dropout))
             layers.append(nn.ReLU())
         #layers.pop()
         #layers.append(nn.ReLU6())
@@ -43,7 +43,7 @@ class Rank_Net(nn.Module):
         self.layers.to(self.device)
         return self.layers(x)
 
-    def train_sgd_speed(self, data, lr=1e-3, batch_size=1, num_epochs=1, ndcg_convergence=0.95, eval_freq=0):
+    def train_sgd_speed4(self, data, lr=5e-3, batch_size=500, num_epochs=1, ndcg_convergence=0.95, eval_freq=15):
         self.layers.train()
         optimizer = torch.optim.Adam(self.layers.parameters(), lr=lr)
         num_queries = data.train.num_queries()
@@ -53,176 +53,11 @@ class Rank_Net(nn.Module):
                 break
             random_query_order = np.arange(num_queries)
             np.random.shuffle(random_query_order)
-            for qid in tqdm(range(num_queries)):
-                s_i, e_i = data.train.query_range(random_query_order[qid])
-                query_scores = self.layers(data.train.feature_matrix[s_i:e_i])
-                query_labels = data.train.query_labels(random_query_order[qid])
-
-                # to catch cases with less than two documents (as no loss can be computed if there is no document pair)
-                if len(query_labels) < 2:
-                    continue
-
-                score_combs = list(zip(*combinations(query_scores, 2)))
-                score_combs_i = torch.stack(score_combs[0]).squeeze()
-                score_combs_j = torch.stack(score_combs[1]).squeeze()
-
-                label_combs = np.array(list(combinations(query_labels, 2)))
-                label_combs_i = torch.from_numpy(label_combs[:, 0])
-                label_combs_j = torch.from_numpy(label_combs[:, 1])
-
-                loss = self.pair_cross_entropy_vectorized(score_combs_i, score_combs_j,
-                                                          label_combs_i, label_combs_j)
-
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-
-                if eval_freq != 0:
-                    if qid % eval_freq == 0:
-                        print('Average Loss epoch {}: {} after query {} of {} queries'.format(e, loss.item(), qid, num_queries))
-                        with torch.no_grad():
-                            self.layers.eval()
-                            validation_scores = torch.round(self.layers(data.validation.feature_matrix))
-                        ndcg_result = evl.ndcg_at_k(validation_scores.numpy(), data.validation.label_vector, 0)
-                        print('NDCG score: {}'.format(ndcg_result))
-                        if ndcg_result > ndcg_convergence:
-                            converged = True
-                            print('Convergence criteria (NDCG of {}) reached after {} epochs'.format(ndcg_convergence, e))
-                            break
-        if not converged:
-            print('Done training for {} epochs'.format(num_epochs))
-
-    def train_sgd_speed2(self, data, lr=1e-5, batch_size=1, num_epochs=1, ndcg_convergence=0.95, eval_freq=0):
-        self.layers.train()
-        optimizer = torch.optim.Adam(self.layers.parameters(), lr=lr)
-        num_queries = data.train.num_queries()
-        converged = False
-        for e in range(num_epochs):
-            if converged:
-                break
-            #random_query_order = np.arange(num_queries)
-            #np.random.shuffle(random_query_order)
-            all_scores = self.layers(data.train.feature_matrix)
-            all_loss = 0
-            for qid in tqdm(range(num_queries)):
-                s_i, e_i = data.train.query_range(qid)#random_query_order[qid])
-                query_scores = all_scores[s_i:e_i]
-                query_labels = data.train.query_labels(qid)#random_query_order[qid])
-
-                # to catch cases with less than two documents (as no loss can be computed if there is no document pair)
-                if len(query_labels) < 2:
-                    continue
-
-                score_combs = list(zip(*combinations(query_scores, 2)))
-                score_combs_i = torch.stack(score_combs[0]).squeeze()
-                score_combs_j = torch.stack(score_combs[1]).squeeze()
-
-                label_combs = np.array(list(combinations(query_labels, 2)))
-                label_combs_i = torch.from_numpy(label_combs[:, 0])
-                label_combs_j = torch.from_numpy(label_combs[:, 1])
-
-                loss = self.pair_cross_entropy_vectorized(score_combs_i, score_combs_j,
-                                                          label_combs_i, label_combs_j)
-
-                all_loss += loss
-
-                if eval_freq != 0:
-                    if qid % eval_freq == 0:
-                        print('Average Loss epoch {}: {} after query {} of {} queries'.format(e, loss.item(), qid, num_queries))
-                        with torch.no_grad():
-                            self.layers.eval()
-                            validation_scores = torch.round(self.layers(data.validation.feature_matrix))
-                        ndcg_result = evl.ndcg_at_k(validation_scores.numpy(), data.validation.label_vector, 0)
-                        print('NDCG score: {}'.format(ndcg_result))
-                        if ndcg_result > ndcg_convergence:
-                            converged = True
-                            print('Convergence criteria (NDCG of {}) reached after {} epochs'.format(ndcg_convergence, e))
-                            break
-            all_loss /= num_queries
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-        if not converged:
-            print('Done training for {} epochs'.format(num_epochs))
-
-    def train_sgd_speed3(self, data, lr=5e-5, batch_size=1000, num_epochs=1, ndcg_convergence=0.95, eval_freq=0):
-        self.layers.train()
-        optimizer = torch.optim.Adam(self.layers.parameters(), lr=lr)
-        num_queries = data.train.num_queries()
-        converged = False
-        for e in range(num_epochs):
-            if converged:
-                break
-            random_query_order = np.arange(num_queries)
-            np.random.shuffle(random_query_order)
-            #num_batches = num_queries/batch_size + (1 if num_queries % batch_size > 0 else 0)
-            all_scores = self.layers(data.train.feature_matrix)
             all_loss = 0
             completed_batches = 0
             for qid in tqdm(range(num_queries)):
-                s_i, e_i = data.train.query_range(random_query_order[qid])
-                query_scores = all_scores[s_i:e_i]
-                query_labels = data.train.query_labels(random_query_order[qid])
-
-                # to catch cases with less than two documents (as no loss can be computed if there is no document pair)
-                if len(query_labels) < 2:
-                    continue
-
-                score_combs = list(zip(*combinations(query_scores, 2)))
-                score_combs_i = torch.stack(score_combs[0]).squeeze()
-                score_combs_j = torch.stack(score_combs[1]).squeeze()
-
-                label_combs = np.array(list(combinations(query_labels, 2)))
-                label_combs_i = torch.from_numpy(label_combs[:, 0])
-                label_combs_j = torch.from_numpy(label_combs[:, 1])
-
-                loss = self.pair_cross_entropy_vectorized(score_combs_i, score_combs_j,
-                                                          label_combs_i, label_combs_j)
-
-                all_loss += loss
-
-                if qid % batch_size == 0 or qid == num_queries-1:
-                    completed_batches += 1
-                    all_loss /= (batch_size if qid % batch_size == 0 else num_queries % batch_size)
-                    optimizer.zero_grad()
-                    loss.backward(retain_graph=(True if qid % batch_size == 0 else False))
-                    optimizer.step()
-
-                    if eval_freq != 0:
-                        if completed_batches % eval_freq == 0:
-                            print('Average Loss epoch {}: {} after query {} of {} queries'.format(e, loss.item(), qid, num_queries))
-                            with torch.no_grad():
-                                self.layers.eval()
-                                validation_scores = torch.round(self.layers(data.validation.feature_matrix))
-                            ndcg_result = evl.ndcg_at_k(validation_scores.numpy(), data.validation.label_vector, 0)
-                            print('NDCG score: {}'.format(ndcg_result))
-                            if ndcg_result > ndcg_convergence:
-                                converged = True
-                                print('Convergence criteria (NDCG of {}) reached after {} epochs'.format(ndcg_convergence, e))
-                                break
-
-        if not converged:
-            print('Done training for {} epochs'.format(num_epochs))
-
-    def train_sgd_speed4(self, data, lr=1e-4, batch_size=500, num_epochs=1, ndcg_convergence=0.95, eval_freq=0):
-        self.layers.train()
-        optimizer = torch.optim.Adam(self.layers.parameters(), lr=lr)
-        num_queries = data.train.num_queries()
-        converged = False
-        for e in range(num_epochs):
-            if converged:
-                break
-            random_query_order = np.arange(num_queries)
-            np.random.shuffle(random_query_order)
-            #num_batches = num_queries/batch_size + (1 if num_queries % batch_size > 0 else 0)
-            all_loss = 0
-            completed_batches = 0
-            for qid in tqdm(range(num_queries)):
-                #s_i, e_i = data.train.query_range(random_query_order[qid])
                 x = torch.Tensor(data.train.query_feat(random_query_order[qid])).to(self.device)
                 query_scores = self.layers(x)
-                #query_scores = all_scores[s_i:e_i]
                 query_labels = data.train.query_labels(random_query_order[qid])
 
                 # to catch cases with less than two documents (as no loss can be computed if there is no document pair)
@@ -251,12 +86,13 @@ class Rank_Net(nn.Module):
 
                     if eval_freq != 0:
                         if completed_batches % eval_freq == 0:
-                            print('Average Loss epoch {}: {} after query {} of {} queries'.format(e, loss.item(), qid, num_queries))
+                            print('Average Loss epoch {}: {} after query {} of {} queries'.format(e, all_loss.item()/batch_size, qid, num_queries))
                             with torch.no_grad():
                                 self.layers.eval()
                                 x = torch.Tensor(data.validation.feature_matrix).to(self.device)
-                                validation_scores = torch.round(self.layers(x))
-                            ndcg_result = evl.ndcg_at_k(validation_scores.numpy(), data.validation.label_vector, 0)
+                                validation_scores = self.layers(x)
+                            eval_scores, eval_labels = self.prepare_for_evaluate(data.validation.label_vector, validation_scores.numpy())
+                            ndcg_result = evl.ndcg_at_k(eval_scores, eval_labels, 0)
                             print('NDCG score: {}'.format(ndcg_result))
                             if ndcg_result > ndcg_convergence:
                                 converged = True
@@ -266,8 +102,21 @@ class Rank_Net(nn.Module):
         if not converged:
             print('Done training for {} epochs'.format(num_epochs))
 
+    def prepare_for_evaluate(self, labels, scores):
+        n_docs = labels.shape[0]
 
-    def train_sgd_speed5(self, data, lr=1e-4, num_epochs=1, ndcg_convergence=0.95, eval_freq=0):
+        random_i = np.random.permutation(
+            np.arange(scores.shape[0])
+        )
+        labels = labels[random_i]
+        scores = scores[random_i]
+
+        sort_ind = np.argsort(scores)[::-1]
+        sorted_labels = labels[sort_ind]
+        ideal_labels = np.sort(labels)[::-1]
+        return sorted_labels, ideal_labels
+
+    def train_sgd_speed5(self, data, lr=5e-5, num_epochs=1, ndcg_convergence=0.95, eval_freq=7000):
         self.layers.train()
         optimizer = torch.optim.Adam(self.layers.parameters(), lr=lr)
         num_queries = data.train.num_queries()
@@ -294,63 +143,35 @@ class Rank_Net(nn.Module):
                 label_combs_i = torch.from_numpy(label_combs[:, 0])
                 label_combs_j = torch.from_numpy(label_combs[:, 1])
 
-                loss = self.pair_cross_entropy_vectorized(score_combs_i, score_combs_j,
-                                                            label_combs_i, label_combs_j)
+                loss = self.pair_cross_entropy_vectorized(score_combs_i, score_combs_j, label_combs_i, label_combs_j)
 
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
 
                 if eval_freq != 0:
-                    if completed_batches % eval_freq == 0:
-                        print('Average Loss epoch {}: {} after query {} of {} queries'.format(e, loss.item(), qid, num_queries))
+                    if qid % eval_freq == 0:
+                        print('Loss epoch {}: {} after query {} of {} queries'.format(e, loss.item(), qid, num_queries))
                         with torch.no_grad():
                             self.layers.eval()
                             x = torch.Tensor(data.validation.feature_matrix).to(self.device)
-                            validation_scores = torch.round(self.layers(x))
-                        ndcg_result = evl.ndcg_at_k(validation_scores.numpy(), data.validation.label_vector, 0)
+                            validation_scores = self.layers(x).squeeze().numpy()
+                        #eval_scores, eval_labels = self.prepare_for_evaluate(data.validation.label_vector,validation_scores)
+                        #ndcg_result = evl.ndcg_at_k(eval_scores, eval_labels, 0)
+                        ndcg_result = evl.evaluate(data.validation, validation_scores)['ndcg'][0]
                         print('NDCG score: {}'.format(ndcg_result))
                         if ndcg_result > ndcg_convergence:
                             converged = True
                             print('Convergence criteria (NDCG of {}) reached after {} epochs'.format(ndcg_convergence, e))
                             break
-
-        if not converged:
-            print('Done training for {} epochs'.format(num_epochs))
-
-    def calculate_gradients(self, loss, model_output):
-        loss.backward()
-
-    def rank_net_loss(self, s_i, s_j, S_i, S_j):
-        S_diff = S_i - S_j
-        Sij = np.where(S_diff > 0, 1.0, -1.0)
-        Sij = torch.from_numpy(np.where(S_diff == 0, 0.0, Sij))
-        sig_diff = self.sigma * (s_i - s_j)
-        return torch.sum(0.5 * (1 - Sij) * sig_diff + torch.log(1 + torch.exp(-sig_diff)))
-
-    def create_valid_pairs(self, query_scores, query_labels):
-        score_combs = list(zip(*combinations(query_scores, 2)))
-        score_combs_i = torch.stack(score_combs[0]).squeeze()
-        score_combs_j = torch.stack(score_combs[1]).squeeze()
-
-        label_combs = np.array(list(combinations(query_labels, 2)))
-        label_combs_i = torch.from_numpy(label_combs[:, 0])
-        label_combs_j = torch.from_numpy(label_combs[:, 1])
-        return score_combs_i, score_combs_j, label_combs_i, label_combs_j
-
-    def aggregate_loss(self, all_losses, loss):
-        return all_losses + loss
-
-
-    def pair_cross_entropy(self, s_i, s_j, S_i, S_j):
-        Sij = 1.0 if S_i > S_j else (-1.0 if S_i < S_j else 0.0)
-        sig_diff = self.sigma * (s_i - s_j)
-        return 0.5 * (1-Sij) * sig_diff + torch.log(1 + torch.exp(-sig_diff))
+        return self.layers, self.evaluate(data.validation)['ndcg']
 
     def pair_cross_entropy_vectorized(self, s_i, s_j, S_i, S_j):
         S_diff = S_i - S_j
-        Sij = np.where(S_diff > 0, 1.0, -1.0)
-        Sij = torch.from_numpy(np.where(S_diff == 0, 0.0, Sij))
+        ones = torch.ones_like(S_diff)
+        zeros = torch.zeros_like(S_diff)
+        Sij = torch.where(S_diff > 0, ones, -ones)
+        Sij = torch.where(S_diff == 0, zeros, Sij)
         sig_diff = self.sigma * (s_i - s_j)
         return torch.sum(0.5 * (1 - Sij) * sig_diff + torch.log(1 + torch.exp(-sig_diff)))
 
@@ -358,7 +179,7 @@ class Rank_Net(nn.Module):
         self.layers.eval()
         with torch.no_grad():
             x = torch.Tensor(data_fold.feature_matrix).to(self.device)
-            validation_scores = torch.round(self.layers(x)).squeeze().numpy()
+            validation_scores = self.layers(x).squeeze().numpy()
         results = evl.evaluate(data_fold, validation_scores, print_results=print_results)
         return results
 
@@ -438,7 +259,7 @@ class Rank_Net_Sped_Up(Rank_Net):
         if not converged:
             print('Done training for {} epochs'.format(num_epochs))
 
-    def train_sgd_speed5(self, data, lr=5e-5, num_epochs=1, ndcg_convergence=0.95, eval_freq=0):
+    def train_sgd_speed5(self, data, lr=5e-5, num_epochs=1, ndcg_convergence=0.95, eval_freq=7000):
         self.layers.train()
         optimizer = torch.optim.Adam(self.layers.parameters(), lr=lr)
         num_queries = data.train.num_queries()
@@ -474,14 +295,15 @@ class Rank_Net_Sped_Up(Rank_Net):
 
 
                 if eval_freq != 0:
-                    if completed_batches % eval_freq == 0:
+                    if qid % eval_freq == 0:
                         print('Average Gradient epoch {}: {} after query {} of {} queries'.format(e, lambda_i, qid,
                                                                                               num_queries))
                         with torch.no_grad():
                             self.layers.eval()
                             x = torch.Tensor(data.validation.feature_matrix).to(self.device)
-                            validation_scores = torch.round(self.layers(x))
-                        ndcg_result = evl.ndcg_at_k(validation_scores.numpy(), data.validation.label_vector, 0)
+                            validation_scores = self.layers(x)
+                        #ndcg_result = evl.ndcg_at_k(validation_scores.numpy(), data.validation.label_vector, 0)
+                        ndcg_result = self.evaluate(data.validation)['ndcg'][0]
                         print('NDCG score: {}'.format(ndcg_result))
                         if ndcg_result > ndcg_convergence:
                             converged = True
@@ -492,6 +314,7 @@ class Rank_Net_Sped_Up(Rank_Net):
 
         if not converged:
             print('Done training for {} epochs'.format(num_epochs))
+        return self.layers, self.evaluate(data.validation)['ndcg']
 
     def rank_net_loss(self, s_i, s_j, S_i, S_j):
         S_diff = S_i - S_j
@@ -515,7 +338,34 @@ class Rank_Net_Sped_Up(Rank_Net):
         label_combs_j = torch.from_numpy(label_combs[:, 1])
         return score_combs_i, score_combs_j, label_combs_i, label_combs_j
 
-
+def hyperparameter_search():
+    lrs = [1e-5, 1e-3, 1e-4]
+    hidden_layers = [[200], [200, 100], [200,100,50]]
+    irms = ['ndcg']
+    sigmas = [0.5, 1.0, 2.0]
+    best_ndcg = 0
+    best_model = None
+    best_ndcg2 = 0
+    best_model2 = None
+    for irm in irms:
+        print(irm)
+        for lr in lrs:
+            for hidden_layer in hidden_layers:
+                for sigma in sigmas:
+                    model = Rank_Net(data.num_features,hidden_layer,sigma=sigma)
+                    model2 = Rank_Net_Sped_Up(data.num_features,hidden_layer,sigma=sigma)
+                    model, ndcg = model.train_sgd_speed5(data, lr=lr, num_epochs=2, eval_freq=0)
+                    model2, ndcg2 = model2.train_sgd_speed5(data, lr=lr, num_epochs=2, eval_freq=0)
+                    print(ndcg)
+                    if ndcg > best_ndcg:
+                        best_ndcg = ndcg
+                        best_model = model
+                        best_ndcg2 = ndcg2
+                        best_model2 = model2
+    print(best_ndcg)
+    torch.save(best_model, './hp_search_best')
+    print(best_ndcg2)
+    torch.save(best_model2, './hp_search_best2')
 
 def r(g, g_max=4):
     return (2**g-1 / 2**g_max)
@@ -534,7 +384,8 @@ if __name__ == "__main__":
     data = dataset.get_dataset().get_data_folds()[0]
     data.read_data()
 
-    net = Rank_Net(data.num_features, sigma=1.0)
+    #hyperparameter_search()
+    net = Rank_Net_Sped_Up(data.num_features, sigma=1.0)
     start = time()
     net.train_sgd_speed5(data, num_epochs=1)
     end = time()
