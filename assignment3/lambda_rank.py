@@ -4,17 +4,20 @@ import tqdm
 import evaluate as evl
 import numpy as np
 import torch
+import pickle
 
 from collections import OrderedDict
 from torch import nn
 
 
 def delta_irm(irm, labels, scores, i, j, query_dcg=None):
+    # sort labels by ranking score
     sorted_idx = (-scores).argsort()
     sorted_labels = labels[sorted_idx]
-    #sorted_scores = scores[sorted_idx]
+    # keep track of where i and j where sorted to
     new_idx_i = np.argwhere(sorted_idx == i)[0][0]
     new_idx_j = np.argwhere(sorted_idx == j)[0][0]
+    # compute irm once before and once after swapping
     before = irm(sorted_labels, 0, query_dcg)
     sorted_labels[new_idx_i], sorted_labels[new_idx_j] = sorted_labels[new_idx_j], sorted_labels[new_idx_i]
     after = irm(sorted_labels, 0, query_dcg)
@@ -24,8 +27,9 @@ def delta_irm(irm, labels, scores, i, j, query_dcg=None):
 
 
 class LambdaRank:
-    def __init__(self, hidden_dims, input_size, lr, irm):
-        self.name = str(lr) + str(hidden_dims) + str(input_size) + str(irm)
+    # Init function. Initializes the layers of the model
+    def __init__(self, hidden_dims, input_size, lr, sigma):
+        self.name = str(lr) + str(hidden_dims) + str(input_size)+ str(sigma)
         layers = OrderedDict()
         layers['layer0'] = nn.Linear(input_size, hidden_dims[0])
         layers['relu0'] = nn.ReLU()
@@ -38,27 +42,26 @@ class LambdaRank:
         layers['relu'+str(len(hidden_dims))] = nn.ReLU()
         self.model = nn.Sequential(layers)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        #self.device= 'cpu'
 
-    def train(self, data, irm, lr):
+    def train(self, data, irm=evl.ndcg_speed, lr=1e-4, sigma=1):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        #device = 'cpu'
-        print(device)
         self.model = self.model.to(device)
-        #lr = 1e-5
+        # more epochs take soooo long
         num_epochs = 1
-        sigma = 1
         evaluate_every = 100
         optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
         # variables for early stopping
-        previous_value = 0
-        max_iterations = 500
+        max_iterations = 500 # maximum number of iterations the model's performance is allowed to not increase
         best_model = None
         best_model_irm = 0
-        since_last_improvement = 0
+        since_last_improvement = 0 # how many iterations have passed since last increase in performance
         stopped = False
+        # variables to track ndcg and err development over training
+        config_ndcgs = []
+        errs = []
 
         for n in range(num_epochs):
+            # goes sequentially through dataset, not batched
             for idx in tqdm.tqdm(range(data.train.num_queries())):
                 self.model.zero_grad()
                 # get feature vectors and labels for each query
@@ -101,11 +104,15 @@ class LambdaRank:
                 s.backward(lambdas.unsqueeze(1))
                 optimizer.step()
 
+                # check the model's performance on validation set
                 if idx % evaluate_every == 0:
                     result = self.eval_model()
                     ndcg = result['ndcg'][0]
-                    print(ndcg, best_model_irm)
-                    # early stopping
+                    err = result['err'][0]
+                    config_ndcgs.append(ndcg)
+                    errs.append(err)
+
+                    # check for early stopping
                     if ndcg < best_model_irm:
                         since_last_improvement += evaluate_every
                         if since_last_improvement > max_iterations:
@@ -116,43 +123,67 @@ class LambdaRank:
                         since_last_improvement = 0
                         best_model = self.model.state_dict()
                         best_model_irm = ndcg
-                    #previous_value = ndcg
-            self.eval_model()
             if stopped:
                 break
+        # after training, eval onece more on validation AND on test set
+        self.eval_model()
         torch.save(best_model, './best_lambda_rank_'+self.name)
-        return best_model, best_model_irm
+        # final test set evaluation
+        with torch.no_grad():
+            features = data.test.feature_matrix
+            features = torch.tensor(features).float().to(self.device)
+            test_s = self.model(features)
+        results = evl.evaluate(data.test, test_s.cpu().numpy().squeeze(), print_results=True)
+        return best_model, best_model_irm, config_ndcgs, errs
 
     def eval_model(self):
         with torch.no_grad():
             features = data.validation.feature_matrix
             features = torch.tensor(features).float().to(self.device)
             validation_s = self.model(features)
-            results = evl.evaluate(data.validation, validation_s.cpu().numpy().squeeze(), print_results=True)
+            results = evl.evaluate(data.validation, validation_s.cpu().numpy().squeeze())
             return results
 
 
 def hyperparameter_search():
     lrs = [1e-4, 1e-5, 1e-6]
     hidden_layers = [[200, 100], [200,100,50]]
-    irms = [evl.ndcg_speed]
+    irm = evl.ndcg_speed
     best_ndcg = 0
     best_model = None
-    for irm in irms:
-        print(irm)
-        for lr in lrs:
-            for hidden_layer in hidden_layers:
-                model = LambdaRank(hidden_layer, data.num_features, lr, irm)
-                model, ndcg = model.train(data, irm, lr)
-                print(ndcg)
-                if ndcg > best_ndcg:
-                    best_ndcg = ndcg
-                    best_model = model
-    print(best_ndcg)
+    ndcgs = []
+
+    for lr in lrs:
+        for hidden_layer in hidden_layers:
+            model = LambdaRank(hidden_layer, data.num_features, lr)
+            model, model_best_ndcg, model_ndcgs, model_best_err = model.train(data, irm, lr)
+            ndcgs.append(model_ndcgs)
+            print(model_best_ndcg)
+            if model_best_ndcg > best_ndcg:
+                best_ndcg = model_best_ndcg
+                best_model = model
+    print('BEST MODEL NDCG: ', best_ndcg)
+    # save the training history and model
+    with open('ndcgs.pkl', 'wb') as f:
+        pickle.dump(ndcgs, f)
     torch.save(best_model, './hp_search_best')
+
+
+
 
 
 if __name__ == '__main__':
     data = dataset.get_dataset().get_data_folds()[0]
     data.read_data()
-    best_model = hyperparameter_search()
+    #best_model = hyperparameter_search()
+
+    best_lr = 1e-4
+    best_hidden = [200, 100]
+    best_sigma = 1
+    irm = evl.ndcg_speed
+    model = LambdaRank(best_hidden, data.num_features, best_lr, best_sigma)
+    model, model_best_ndcg, model_ndcgs, model_errs = model.train(data, irm, best_lr, best_sigma)
+    best_results = {'ndcg': model_ndcgs, 'err': model_errs}
+    with open('best_results.pkl', 'wb') as f:
+        pickle.dump(best_results, f)
+    torch.save(model, './best_final')
