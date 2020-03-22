@@ -1,6 +1,19 @@
 import dataset
 import numpy as np
 
+
+def err(labels, k=0, query_dcg=None):
+    p = 1
+    err = 0
+    g_max = max(labels)
+    for r in range(len(labels)):
+        g = labels[r]
+        R = (2 ** g - 1) / (2 ** g_max)
+        err += p * R / (r+1)
+        p *= 1 - R
+    return err
+
+
 def dcg_at_k(sorted_labels, k):
   if k > 0:
     k = min(sorted_labels.shape[0], k)
@@ -10,6 +23,7 @@ def dcg_at_k(sorted_labels, k):
   nom = 2**sorted_labels-1.
   dcg = np.sum(nom[:k]*denom)
   return dcg
+
 
 def ndcg_at_k(sorted_labels, ideal_labels, k):
   return dcg_at_k(sorted_labels, k) / dcg_at_k(ideal_labels, k)
@@ -25,6 +39,10 @@ def err_rank_net(ranking_labels):
     ERR += p * R / (r + 1)
     p *= 1 - R
   return ERR
+
+def ndcg_speed(sorted_labels, k, query_dcg_at_k):
+  return dcg_at_k(sorted_labels, k) / (query_dcg_at_k+1e-8)
+
 
 def evaluate_query(data_split, qid, all_scores):
   s_i, e_i = data_split.doclist_ranges[qid:qid+2]
@@ -78,6 +96,7 @@ def evaluate_labels_scores(labels, scores):
       'ndcg@05': ndcg_at_k(sorted_labels, ideal_labels, 5),
       'ndcg@10': ndcg_at_k(sorted_labels, ideal_labels, 10),
       'ndcg@20': ndcg_at_k(sorted_labels, ideal_labels, 20),
+      'err': err(sorted_labels, 0)
     }
   else:
     result = {
@@ -92,6 +111,7 @@ def evaluate_labels_scores(labels, scores):
       'ndcg@05': ndcg_at_k(sorted_labels, ideal_labels, 5),
       'ndcg@10': ndcg_at_k(sorted_labels, ideal_labels, 10),
       'ndcg@20': ndcg_at_k(sorted_labels, ideal_labels, 20),
+      'err': err(sorted_labels, 0)
     }
   return result
 
@@ -113,7 +133,8 @@ def evaluate(data_split, all_scores, print_results=False):
     if included(qid, data_split):
       add_to_results(results, evaluate_query(data_split, qid, all_scores))
 
-  print('"metric": "mean" ("standard deviation")')
+  if print_results:
+    print('"metric": "mean" ("standard deviation")')
   mean_results = {}
   for k in sorted(results.keys()):
     v = results[k]
