@@ -43,7 +43,7 @@ class Rank_Net(nn.Module):
         self.layers.to(self.device)
         return self.layers(x)
 
-    def train_sgd_speed4(self, data, lr=5e-3, batch_size=500, num_epochs=1, ndcg_convergence=0.95, eval_freq=15):
+    def train_sgd_speed4(self, data, lr=2e-3, batch_size=500, num_epochs=1, ndcg_convergence=0.95, eval_freq=1000):
         self.layers.train()
         optimizer = torch.optim.Adam(self.layers.parameters(), lr=lr)
         num_queries = data.train.num_queries()
@@ -85,22 +85,24 @@ class Rank_Net(nn.Module):
                     optimizer.step()
 
                     if eval_freq != 0:
-                        if completed_batches % eval_freq == 0:
-                            print('Average Loss epoch {}: {} after query {} of {} queries'.format(e, all_loss.item()/batch_size, qid, num_queries))
+                        if qid % eval_freq == 0:
+                            print('Loss epoch {}: {} after query {} of {} queries'.format(e, loss.item(), qid,
+                                                                                          num_queries))
                             with torch.no_grad():
                                 self.layers.eval()
                                 x = torch.Tensor(data.validation.feature_matrix).to(self.device)
-                                validation_scores = self.layers(x)
-                            eval_scores, eval_labels = self.prepare_for_evaluate(data.validation.label_vector, validation_scores.numpy())
-                            ndcg_result = evl.ndcg_at_k(eval_scores, eval_labels, 0)
+                                validation_scores = self.layers(x).squeeze().numpy()
+                            # eval_scores, eval_labels = self.prepare_for_evaluate(data.validation.label_vector,validation_scores)
+                            # ndcg_result = evl.ndcg_at_k(eval_scores, eval_labels, 0)
+                            ndcg_result = evl.evaluate(data.validation, validation_scores)['ndcg'][0]
                             print('NDCG score: {}'.format(ndcg_result))
                             if ndcg_result > ndcg_convergence:
                                 converged = True
-                                print('Convergence criteria (NDCG of {}) reached after {} epochs'.format(ndcg_convergence, e))
+                                print(
+                                    'Convergence criteria (NDCG of {}) reached after {} epochs'.format(ndcg_convergence,
+                                                                                                       e))
                                 break
-
-        if not converged:
-            print('Done training for {} epochs'.format(num_epochs))
+        return self.layers, self.evaluate(data.validation)['ndcg']
 
     def prepare_for_evaluate(self, labels, scores):
         n_docs = labels.shape[0]
@@ -116,7 +118,7 @@ class Rank_Net(nn.Module):
         ideal_labels = np.sort(labels)[::-1]
         return sorted_labels, ideal_labels
 
-    def train_sgd_speed5(self, data, lr=5e-5, num_epochs=1, ndcg_convergence=0.95, eval_freq=7000):
+    def train_sgd_speed5(self, data, lr=5e-5, num_epochs=1, ndcg_convergence=0.95, eval_freq=1000):
         self.layers.train()
         optimizer = torch.optim.Adam(self.layers.parameters(), lr=lr)
         num_queries = data.train.num_queries()
@@ -192,6 +194,7 @@ class Rank_Net_Sped_Up(Rank_Net):
         self.layers.train()
         optimizer = torch.optim.Adam(self.layers.parameters(), lr=lr)
         num_queries = data.train.num_queries()
+        prev_ndcg = 0
         converged = False
         for e in range(num_epochs):
             if converged:
@@ -238,31 +241,34 @@ class Rank_Net_Sped_Up(Rank_Net):
                     batch_scores.backward(batch_lambdas)
                     optimizer.step()
 
-
                     if eval_freq != 0:
-                        if completed_batches % eval_freq == 0:
+                        if qid % eval_freq == 0:
                             print('Average Gradient epoch {}: {} after query {} of {} queries'.format(e, lambda_i, qid,
-                                                                                                  num_queries))
-                            with torch.no_grad():
-                                self.layers.eval()
-                                x = torch.Tensor(data.validation.feature_matrix).to(self.device)
-                                validation_scores = torch.round(self.layers(x))
-                            ndcg_result = evl.ndcg_at_k(validation_scores.numpy(), data.validation.label_vector, 0)
+                                                                                                      num_queries))
+                            # with torch.no_grad():
+                            #     self.layers.eval()
+                            #     x = torch.Tensor(data.validation.feature_matrix).to(self.device)
+                            #     validation_scores = self.layers(x)
+                            ndcg_result = self.evaluate(data.validation)['ndcg'][0]
                             print('NDCG score: {}'.format(ndcg_result))
-                            if ndcg_result > ndcg_convergence:
+                            if ndcg_result > ndcg_convergence or ndcg_result - prev_ndcg < 0.001:
                                 converged = True
                                 print(
                                     'Convergence criteria (NDCG of {}) reached after {} epochs'.format(ndcg_convergence,
                                                                                                        e))
                                 break
+                            else:
+                                prev_ndcg = ndcg_result
 
-        if not converged:
-            print('Done training for {} epochs'.format(num_epochs))
+                if not converged:
+                    print('Done training for {} epochs'.format(num_epochs))
+                return self.layers, self.evaluate(data.validation)['ndcg']
 
     def train_sgd_speed5(self, data, lr=5e-5, num_epochs=1, ndcg_convergence=0.95, eval_freq=7000):
         self.layers.train()
         optimizer = torch.optim.Adam(self.layers.parameters(), lr=lr)
         num_queries = data.train.num_queries()
+        prev_ndcg = 0
         converged = False
         for e in range(num_epochs):
             if converged:
@@ -298,19 +304,20 @@ class Rank_Net_Sped_Up(Rank_Net):
                     if qid % eval_freq == 0:
                         print('Average Gradient epoch {}: {} after query {} of {} queries'.format(e, lambda_i, qid,
                                                                                               num_queries))
-                        with torch.no_grad():
-                            self.layers.eval()
-                            x = torch.Tensor(data.validation.feature_matrix).to(self.device)
-                            validation_scores = self.layers(x)
-                        #ndcg_result = evl.ndcg_at_k(validation_scores.numpy(), data.validation.label_vector, 0)
+                        # with torch.no_grad():
+                        #     self.layers.eval()
+                        #     x = torch.Tensor(data.validation.feature_matrix).to(self.device)
+                        #     validation_scores = self.layers(x)
                         ndcg_result = self.evaluate(data.validation)['ndcg'][0]
                         print('NDCG score: {}'.format(ndcg_result))
-                        if ndcg_result > ndcg_convergence:
+                        if ndcg_result > ndcg_convergence or ndcg_result-prev_ndcg < 0.001:
                             converged = True
                             print(
                                 'Convergence criteria (NDCG of {}) reached after {} epochs'.format(ndcg_convergence,
                                                                                                    e))
                             break
+                        else:
+                            prev_ndcg = ndcg_result
 
         if not converged:
             print('Done training for {} epochs'.format(num_epochs))
@@ -385,9 +392,9 @@ if __name__ == "__main__":
     data.read_data()
 
     #hyperparameter_search()
-    net = Rank_Net_Sped_Up(data.num_features, sigma=1.0)
+    net = Rank_Net(data.num_features, sigma=1.0)
     start = time()
-    net.train_sgd_speed5(data, num_epochs=1)
+    net.train_sgd_speed4(data, num_epochs=1)
     end = time()
     print('Finished training in {} minutes'.format((end-start)/60))
     net.save(path='./rank_net'+str(net.model_id)+'.weights')
