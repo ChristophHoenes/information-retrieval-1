@@ -28,9 +28,21 @@ def dcg_at_k(sorted_labels, k):
 def ndcg_at_k(sorted_labels, ideal_labels, k):
   return dcg_at_k(sorted_labels, k) / dcg_at_k(ideal_labels, k)
 
+def big_R(g, g_max=4):
+  return (2 ** g - 1) / (2 ** g_max)
+
+def err_rank_net(ranking_labels):
+  p = 1.0
+  ERR = 0.0
+  for r in range(len(ranking_labels)):
+    R = big_R(ranking_labels[r],g_max=max(ranking_labels))
+    ERR += p * R / (r + 1)
+    p *= 1 - R
+  return ERR
 
 def ndcg_speed(sorted_labels, k, query_dcg_at_k):
   return dcg_at_k(sorted_labels, k) / (query_dcg_at_k+1e-8)
+
 
 def evaluate_query(data_split, qid, all_scores):
   s_i, e_i = data_split.doclist_ranges[qid:qid+2]
@@ -62,6 +74,8 @@ def evaluate_labels_scores(labels, scores):
     result = {
       'relevant rank': list(rel_i),
       'relevant rank per query': np.sum(rel_i),
+      'arr': np.sum(rel_i)/len(sorted_labels),
+      'err_rank_net': err_rank_net(sorted_labels),
       'precision@01': np.sum(bin_labels[:1])/1.,
       'precision@03': np.sum(bin_labels[:3])/3.,
       'precision@05': np.sum(bin_labels[:5])/5.,
@@ -92,6 +106,7 @@ def evaluate_labels_scores(labels, scores):
       'dcg@10': dcg_at_k(sorted_labels, 10),
       'dcg@20': dcg_at_k(sorted_labels, 20),
       'ndcg': ndcg_at_k(sorted_labels, ideal_labels, 0),
+      'err_rank_net': err_rank_net(sorted_labels),
       'ndcg@03': ndcg_at_k(sorted_labels, ideal_labels, 3),
       'ndcg@05': ndcg_at_k(sorted_labels, ideal_labels, 5),
       'ndcg@10': ndcg_at_k(sorted_labels, ideal_labels, 10),
