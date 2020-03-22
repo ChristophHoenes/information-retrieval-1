@@ -111,6 +111,8 @@ def get_processed_docs(doc_set_name="processed_docs"):
         step_size = 1000
         start_time = time.time()
         for i in range(0, len(docs), step_size):
+            #if i % 2000 == 0 or i % 5000:  # ~quater of data
+            #    continue    #
             out_p_local = p.map(
                 process_text, docs[i:min(len(docs), i+step_size)])
             out_p += out_p_local

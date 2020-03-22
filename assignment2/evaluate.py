@@ -28,7 +28,7 @@ def evaluate_model(model, qrels, queries, json_path_name, trec_path_name, run):
     with open(json_path_name, "w") as writer:
         json.dump(metrics, writer, indent=1)
 
-    # write file with all query-doc pairs, scores, ranks, etc.
+    # write trec file with all query-doc pairs, scores, ranks, etc.
     f = open(trec_path_name, "w")
     for qid in overall_ser:
         prevscore = 1e9
@@ -40,3 +40,4 @@ def evaluate_model(model, qrels, queries, json_path_name, trec_path_name, run):
             f.write(f"{qid} Q0 {docid} {rank} {score} {run}\n")
             prevscore = score
     f.close()
+
