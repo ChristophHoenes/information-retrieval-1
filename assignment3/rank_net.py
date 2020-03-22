@@ -1,5 +1,4 @@
 import dataset
-import ranking as rnk
 import evaluate as evl
 
 import math
@@ -95,8 +94,6 @@ class Rank_Net(nn.Module):
                             self.layers.eval()
                             x = torch.Tensor(data.validation.feature_matrix).to(self.device)
                             validation_scores = self.layers(x).squeeze().numpy()
-                        # eval_scores, eval_labels = self.prepare_for_evaluate(data.validation.label_vector,validation_scores)
-                        # ndcg_result = evl.ndcg_at_k(eval_scores, eval_labels, 0)
                         val_result = evl.evaluate(data.validation, validation_scores)
                         arrs.append(val_result['arr'][0])
                         ndcg_result = val_result['ndcg'][0]
@@ -117,8 +114,8 @@ class Rank_Net(nn.Module):
         print('Done training for {} epochs'.format(num_epochs))
         with open('valid_results_lr_' + str(lr)+'_'+self.model_id, 'wb') as f:
             pickle.dump(validation_results, f)
-        # with open('loss_results_lr_' + str(lr)+'_'+self.model_id, 'wb') as f:
-        #     pickle.dump(losses, f)
+        with open('loss_results_lr_' + str(lr)+'_'+self.model_id, 'wb') as f:
+             pickle.dump(losses, f)
         with open('arr_results_lr_' + str(lr)+'_'+self.model_id, 'wb') as f:
             pickle.dump(arrs, f)
         return self.layers, self.evaluate(data.validation)['ndcg']
@@ -168,8 +165,6 @@ class Rank_Net(nn.Module):
                             self.layers.eval()
                             x = torch.Tensor(data.validation.feature_matrix).to(self.device)
                             validation_scores = self.layers(x).squeeze().numpy()
-                        #eval_scores, eval_labels = self.prepare_for_evaluate(data.validation.label_vector,validation_scores)
-                        #ndcg_result = evl.ndcg_at_k(eval_scores, eval_labels, 0)
                         ndcg_result = evl.evaluate(data.validation, validation_scores)['ndcg'][0]
                         validation_results.append(ndcg_result)
                         print('NDCG score: {}'.format(ndcg_result))
@@ -199,20 +194,6 @@ class Rank_Net(nn.Module):
         Sij = torch.where(S_diff == 0, zeros, Sij)
         sig_diff = self.sigma * (s_i - s_j)
         return torch.sum(0.5 * (1 - Sij) * sig_diff + torch.log(1 + torch.exp(-sig_diff)))
-
-    def prepare_for_evaluate(self, labels, scores):
-        n_docs = labels.shape[0]
-
-        random_i = np.random.permutation(
-            np.arange(scores.shape[0])
-        )
-        labels = labels[random_i]
-        scores = scores[random_i]
-
-        sort_ind = np.argsort(scores)[::-1]
-        sorted_labels = labels[sort_ind]
-        ideal_labels = np.sort(labels)[::-1]
-        return sorted_labels, ideal_labels
 
     def evaluate(self, data_fold, print_results=False):
         self.layers.eval()
@@ -284,10 +265,6 @@ class Rank_Net_Sped_Up(Rank_Net):
 
                 if eval_freq != 0:
                     if qid % eval_freq == 0:
-                        # with torch.no_grad():
-                        #     self.layers.eval()
-                        #     x = torch.Tensor(data.validation.feature_matrix).to(self.device)
-                        #     validation_scores = self.layers(x)
                         val_result = self.evaluate(data.validation)
                         arrs.append(val_result['arr'][0])
                         ndcg_result = val_result['ndcg'][0]
@@ -307,8 +284,8 @@ class Rank_Net_Sped_Up(Rank_Net):
         print('Done training for {} epochs'.format(num_epochs))
         with open('valid_results_lr_'+ str(lr) +'_'+ self.model_id, 'wb') as f:
             pickle.dump(validation_results, f)
-        # with open('loss_results_lr_' + str(lr)+'_'+self.model_id, 'wb') as f:
-        #     pickle.dump(losses, f)
+        with open('loss_results_lr_' + str(lr)+'_'+self.model_id, 'wb') as f:
+             pickle.dump(losses, f)
         with open('arr_results_lr_' + str(lr)+'_'+self.model_id, 'wb') as f:
             pickle.dump(arrs, f)
         return self.layers, self.evaluate(data.validation)['ndcg']
@@ -355,10 +332,6 @@ class Rank_Net_Sped_Up(Rank_Net):
 
                 if eval_freq != 0:
                     if qid % eval_freq == 0:
-                        # with torch.no_grad():
-                        #     self.layers.eval()
-                        #     x = torch.Tensor(data.validation.feature_matrix).to(self.device)
-                        #     validation_scores = self.layers(x)
                         ndcg_result = self.evaluate(data.validation)['ndcg'][0]
                         validation_results.append(ndcg_result)
                         print('NDCG score: {}'.format(ndcg_result))
@@ -393,7 +366,6 @@ def hyperparameter_search():
     lrs = [2e-3, 1e-3, 5e-4]
     hidden_layers = [[200], [200, 100], [200,100,50]]
     irms = ['ndcg']
-    #sigmas = [0.5, 1.0, 2.0]
     sigmas = [1.0]
 
     best_ndcg = [0]
@@ -448,24 +420,4 @@ if __name__ == "__main__":
     final_test_results = net.evaluate(data.test,print_results=True)
     with open('eval'+str(net.model_id), 'wb') as f:
         pickle.dump(final_test_results, f)
-
-    # net2 = Rank_Net_Sped_Up(data.num_features, sigma=1)
-    # start = time()
-    # net2.train_sgd_speed5(data, num_epochs=1)
-    # end = time()
-    # print('Finished training in {} minutes'.format((end - start) / 60))
-    # net2.save(path='./rank_net' + str(net2.model_id) + '.weights')
-    # final_test_results = net2.evaluate(data.test, print_results=True)
-    # with open('eval' + str(net2.model_id), 'wb') as f:
-    #     pickle.dump(final_test_results, f)
-
-    # net = Rank_Net(data.num_features)
-    # start = time()
-    # net.train_bgd2_retain(data)
-    # end = time()
-    # print('Finished training in {} minutes'.format((end - start) / 60))
-    # net.save(path='./rank_net' + str(net.model_id) + '.weights')
-    # final_test_results = net.evaluate(data.test, print_results=True)
-    # with open('eval' + str(net.model_id), 'wb') as f:
-    #     pickle.dump(final_test_results, f)
 
