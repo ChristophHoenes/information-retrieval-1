@@ -6,6 +6,9 @@ To train a pointwise model, run `train_pointwise.py`, e.g.:
 Results are written to folder `results`. The results include losses over training, for both training and validation, and NDCG over training, and final test performance of the model.
 
 ### RankNet ###
+To train the original RankNet and the sped-up version with the hyperparameters from the report simply run rank_net.py.
+To change some parameters check the parameter list of the class and change the desired value in main.
+If hyperparameter tuning should also be done, comment in the call for `hyperparameter_search()`
 
 ### LambdaRank ###
 To start the fine-tuned model, simply run `lambda_net.py` as the main function.
