@@ -14,11 +14,9 @@ import json
 
 class W2v:
     def __init__(self, wind_size, docs=None, embedding_dim=300):
-        # if docs is not given, the embeddings are loaded from file
         if docs == None:
             self.load_embedding(wind_size)
             self.embedding_dim = embedding_dim
-            self.doc_vecs = None
         else:
             self.doc_ids = docs.keys()
             self.docs = docs
@@ -71,7 +69,6 @@ class W2v:
             self.vocab = self.word2idx.keys()
             self.embedding = None
             self.embedding_dim = embedding_dim
-            self.doc_vecs = None
 
     def load_embedding(self, wind_size):
         weights = torch.tensor(np.load('./w2v_weights_'+str(wind_size)+'.npy', allow_pickle=True))
@@ -90,9 +87,15 @@ class W2v:
         while count < num:
             doc_id = random.sample(self.doc_ids, 1)[0]
             indices = [self.word2idx[word] if word in self.word2idx else 0 for word in self.docs[doc_id]]
+            #    print(count/num)
             for pos in range(len(indices)):
                 context_poses = list(range(pos-wind_size, pos+wind_size+1))
-                contexts = [indices[cont] for cont in context_poses if (0 <= cont < len(indices))]
+
+                try:
+                    contexts = [indices[cont] for cont in context_poses if (0 <= cont < len(indices))]
+                except Exception:
+                    print('here', context_poses)
+                    print(indices)
                 for context_pos in context_poses:
                     if context_pos == pos:
                         continue
@@ -142,20 +145,30 @@ class W2v:
             context = torch.tensor(pairs[:, 1]).long()
             labels = torch.tensor(pairs[:, 2]).float()
 
+            #input_center = torch.zeros(batch_size, len(self.vocab))
+            #input_context = torch.zeros(batch_size, len(self.vocab))
+            """
+            for j in range(len(center)):
+                input_center[j, center[j]] = 1.0
+                input_context[j, context[j]] = 1.0
+            """
             out1 = l1(center)
             out2 = l2(context)
             shape = out1.shape
+            #print(shape)
             dot_prods = torch.bmm(out1.view(shape[0], 1, shape[1]), out2.view(shape[0], shape[1], 1))
             dot_prods = dot_prods.squeeze()
 
             logits = torch.sigmoid(dot_prods)
             loss = criterion(logits, labels)
+            #print("Iteration {}: {}".format(i, loss))
             loss.backward()
             optimizer.step()
 
             if i%100 == 0:
                 print("Iteration {}: {}".format(i, loss))
         wvs = l1.weight.data.cpu().numpy()
+        #print(wvs)
         np.save('./w2v_weights_'+str(wind_size)+'.npy', wvs)
         with open('./word2idx_'+str(wind_size)+'.pickle', 'wb') as pickle_file:
             pkl.dump(self.word2idx, pickle_file)
@@ -163,33 +176,29 @@ class W2v:
             pkl.dump(self.idx2word, pickle_file)
         self.embedding = l1
 
-    # gets k most similar words
     def most_similar(self, word, k):
         word_vector = self.get_word_vec(word)
         similarities = torch.zeros(len(self.idx2word))
         cos = nn.CosineSimilarity(dim=0, eps=1e-6)
         for i in self.idx2word:
             similarities[i] = abs(cos(word_vector, self.get_word_vec(self.idx2word[i])))
+        #print(similarities.shape)
         indices = (-similarities.numpy()).argsort()[:k]
         results = [self.idx2word[idx] for idx in indices]
         return results
 
     def get_word_vec(self, word):
-        if word in self.word2idx:
-            return self.embedding(torch.tensor(self.word2idx[word], dtype=torch.long))
-        else:
-            # if word is not in vocab, use index for unknown words (0)
-            return self.embedding(torch.tensor(0, dtype=torch.long))
+        return self.embedding(torch.tensor(self.word2idx[word], dtype=torch.long))
 
     def get_doc_vec(self, doc, agg_mode=torch.mean):
         wvs = torch.zeros(len(doc), self.embedding_dim)
         for i, token in enumerate(doc):
             wvs[i] = self.get_word_vec(token)
         doc_vec = agg_mode(wvs, dim=0)
+        print(doc_vec.shape)
         return doc_vec
 
     def get_doc_vecs(self, docs):
-        self.docs = docs
         print('getting vectors')
         doc_vecs_list = []
         idx2docid = {}
@@ -197,19 +206,19 @@ class W2v:
             doc_vecs_list.append(self.get_doc_vec(self.docs[doc_id]))
             idx2docid[i] = doc_id
         doc_vecs = torch.stack(doc_vecs_list, dim=1)
+        print(doc_vecs.shape)
         self.doc_vecs = doc_vecs
         self.idx2docid = idx2docid
-        with open('v2w_docvecs.pkl', 'wb') as writer:
-            pkl.dump(self.doc_vecs, writer)
-        with open('v2w_docvecs_idx.pkl', 'wb') as writer:
-            pkl.dump(self.idx2docid, writer)
 
     def search(self, query):
+        if self.doc_vecs == None:
+            raise Exception('Forgot to call get_doc_vecs() before ranking.')
         query_repr = read_ap.process_text(query)
         orig = self.get_doc_vec(query_repr)
         orig = orig.unsqueeze(1).repeat(1, len(self.docs))
         cos = nn.CosineSimilarity(dim=0, eps=1e-6)
         prod = cos(orig, self.doc_vecs)
+        print('sorting results')
         indices = (-prod.numpy()).argsort()
         results = [(self.idx2docid[index], float(prod.numpy()[index])) for index in indices]
         return results
@@ -218,15 +227,25 @@ class W2v:
 if __name__ == "__main__":
     # ensure dataset is downloaded
     download_ap.download_dataset()
+    # pre-process the text
+    """
+    docs_path = "./w2v_docs"
+    if os.path.exists(docs_path):
+        with open(docs_path, "rb") as reader:
+            docs_by_id = pkl.load(reader)
+    else:
+        docs_by_id = read_ap.get_processed_docs()
+        with open(docs_path, "wb") as writer:
+            pkl.dump(docs_by_id, writer)
+    """
     window_size = 5
     embedding_dim = 300
-
     docs_by_id = read_ap.get_processed_docs()
-    # uncomment the following to train word2vec
+    # uncomment the following to train doc2vec
     #w2v = W2v(window_size, docs_by_id, embedding_dim)
     #w2v.train_nn(embedding_dim, window_size)
     #print('done training')
-    w2v = W2v(window_size, embedding_dim=embedding_dim)
+    w2v = W2v(window_size, embedding_dim)
     #uncomment the following to get k most similar words (word must be stemmed)
     #word = 'green'
     #k = 10
@@ -236,10 +255,11 @@ if __name__ == "__main__":
     # get queries
     qrels, queries = read_ap.read_qrels()
     overall_ser = {}
-    w2v.get_doc_vecs(docs_by_id)
+    d2v = w2v = W2v(window_size, embedding_dim)
+    d2v.get_doc_vecs(docs_by_id)
     for qid in tqdm(qrels):
         query_text = queries[qid]
-        results = w2v.search(query_text)
+        results = d2v.search(query_text)
         overall_ser[qid] = dict(results)
     with open("w2v_ranking.json", "w") as writer:
         json.dump(overall_ser, writer, indent=1)
