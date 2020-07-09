@@ -1,4 +1,4 @@
-This repository contains programming assignments for the course Information Retrieval 1, given at the University of Amsterdam.
+This repository contains programming assignments for the course Information Retrieval 1, given at the University of Amsterdam 2019-2020.
 
 Authors: <br>
 • Christoph Hönes <br>
